@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+.venv/
+.env
+.python-version
+
+# Project specific - 数据和模型不进 git
+data/
+checkpoints/
+logs/
+outputs/
+wandb/
+.hydra/
+runs/
+
+# Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Hardware test logs（可能很大）
+hardware_logs/
+recordings/
+*.bag
+
+# Large file types
+*.pkl
+*.h5
+*.hdf5
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.mp4
+*.avi
+*.npy
+*.npz
+
+# Mesh files太大时（先 commented，需要时再开）
+# *.stl
+# *.obj
+# *.dae
+
+# OS
+.DS_Store
+Thumbs.db
+*~
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build
+build/
+dist/
+*.so
