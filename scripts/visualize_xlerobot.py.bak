@@ -1,0 +1,96 @@
+"""Day 4 验证脚本: 在 sim 里加载 XLeRobot, 弹 viewer 看, 验证 joints 能动 + camera 能 render。
+
+用法:
+    python scripts/visualize_xlerobot.py
+
+期望产出:
+    1. 弹一个 GUI 窗口, 里面有 XLeRobot 站在地上
+    2. Terminal 输出每个 joint 的名字和位置范围
+    3. Head camera 渲染出一张 RGB 图, 保存到 data/debug/head_cam_sample.png
+    4. 按键盘任意键关闭
+
+如果以上 4 项都成功, Day 4 验收通过。
+"""
+from __future__ import annotations
+import os
+from pathlib import Path
+
+import numpy as np
+import gymnasium as gym
+import mani_skill.envs  # noqa: F401, 注册 envs
+from mani_skill.envs.sapien_env import BaseEnv
+from mani_skill.utils import sapien_utils
+
+
+# ---------------------------------------------------------------
+# 配置
+# ---------------------------------------------------------------
+DEBUG_DIR = Path("data/debug")
+DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def main():
+    # 用 ManiSkill 自带的 EmptyEnv (最简场景,只有地面 + robot)
+    # robot_uids="xlerobot" 让 env 把 XLeRobot 作为 default agent 加载进来
+    env: BaseEnv = gym.make(
+        "Empty-v1",
+        robot_uids="xlerobot",
+        num_envs=1,
+        obs_mode="rgb",       # 让 env 同时 render camera
+        sim_backend="gpu",    # 用 GPU sim
+        render_mode="human",  # 弹 viewer
+    ).unwrapped
+
+    obs, _ = env.reset(seed=0)
+    print(f"\n✓ Env reset OK")
+    print(f"  Robot uid: {env.agent.uid}")
+
+    # ---- 检查 joint 信息 ----
+    robot = env.agent.robot
+    print(f"\n✓ Robot loaded: {robot.name}")
+    print(f"  Total links: {len(robot.get_links())}")
+    print(f"  Total joints: {len(robot.get_joints())}")
+    print(f"  Active joints (controllable): {len(robot.get_active_joints())}")
+
+    print("\n--- Active joints ---")
+    for j in robot.get_active_joints():
+        limit = j.get_limits()
+        print(f"  {j.name:30s} type={j.type:12s} limit={limit}")
+
+    # ---- 检查 camera ----
+    print("\n--- Sensors ---")
+    if hasattr(env, "_sensors"):
+        for name, sensor in env._sensors.items():
+            print(f"  {name}: {type(sensor).__name__}")
+
+    # ---- Render head camera RGB 保存一张 ----
+    # obs 在 rgb mode 下应该包含 sensor_data
+    if "sensor_data" in obs:
+        for cam_name, cam_data in obs["sensor_data"].items():
+            if "rgb" in cam_data:
+                rgb = cam_data["rgb"][0].cpu().numpy()  # (H, W, 3) uint8
+                # 保存
+                from PIL import Image
+                save_path = DEBUG_DIR / f"{cam_name}_sample.png"
+                Image.fromarray(rgb).save(save_path)
+                print(f"  Saved: {save_path}  shape={rgb.shape}")
+
+    # ---- 跑几帧动起来,验证 joints 能动 ----
+    print("\n--- Running 100 steps with random actions ---")
+    action_space = env.action_space
+    print(f"  Action space: {action_space}")
+
+    for i in range(100):
+        action = action_space.sample()
+        obs, rew, terminated, truncated, info = env.step(action)
+        env.render_human()  # 刷新 viewer
+
+    print("\n✓ All checks passed. Close viewer to exit.")
+
+    # 保持 viewer 开着,直到用户关闭
+    while True:
+        env.render_human()
+
+
+if __name__ == "__main__":
+    main()
