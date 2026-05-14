@@ -74,3 +74,5 @@
 - LeRobot 设计哲学: https://github.com/huggingface/lerobot
 - ManiSkill 文档: https://maniskill.readthedocs.io/
 
+
+- **TCP local offset 数值**: `[0.0, -0.107, 0.0]` in Fixed_Jaw frame (沿 -Y 10.7cm)。来源: `scripts/diagnostic/measure_tcp_offset.py` 在 viewer 中可视化验证。旧 grasp_demo 项目用过 9cm, 实测应为 10.7cm。差 1.7cm 接近一个 cube 半径, 必须用 10.7cm 否则 grasp 失败率飙升。
