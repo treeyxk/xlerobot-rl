@@ -49,10 +49,15 @@ class StaticArmGraspEnv(BaseEnv):
         *args,
         robot_uids="xlerobot_2wheels",
         control_mode="pd_joint_target_delta_pos",
+        obs_mode="rgbd",      # ← 默认改成 rgbd (M1v0 需要)
         **kwargs,
     ):
         super().__init__(
-            *args, robot_uids=robot_uids, control_mode=control_mode, **kwargs
+            *args,
+            robot_uids=robot_uids,
+            control_mode=control_mode,
+            obs_mode=obs_mode,
+            **kwargs,
         )
 
     @property

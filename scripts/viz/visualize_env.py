@@ -14,12 +14,41 @@ def main():
     env = gym.make(
         "StaticArmGrasp-v0",
         num_envs=1,
-        obs_mode="rgb",
+        obs_mode="rgbd",
         sim_backend="gpu",
         render_mode="human",
     ).unwrapped
 
     obs, _ = env.reset(seed=0)
+    print(f"✓ Env reset OK, obs_mode={env.obs_mode}")
+
+    # 检查 sensor data
+    if "sensor_data" in obs:
+        for cam_name, cam_data in obs["sensor_data"].items():
+            print(f"  Camera '{cam_name}':")
+            for key, value in cam_data.items():
+                if hasattr(value, "shape"):
+                    print(f"    {key}: shape={value.shape}, dtype={value.dtype}")
+                else:
+                    print(f"    {key}: {value}")
+
+    # 保存一张 head_camera RGB 和 depth 图到 data/debug
+    import os
+    os.makedirs("data/debug", exist_ok=True)
+    import cv2
+    import numpy as np
+
+    head_rgb = obs["sensor_data"]["head_camera"]["rgb"][0].cpu().numpy()
+    head_depth = obs["sensor_data"]["head_camera"]["depth"][0].cpu().numpy()
+
+    # RGB
+    cv2.imwrite("data/debug/head_rgb_d415.png", cv2.cvtColor(head_rgb, cv2.COLOR_RGB2BGR))
+
+    # Depth 可视化 (归一化到 0-255)
+    depth_vis = (head_depth.squeeze() / head_depth.max() * 255).astype(np.uint8)
+    cv2.imwrite("data/debug/head_depth_d415.png", depth_vis)
+    print(f"\n✓ Saved RGB to data/debug/head_rgb_d415.png")
+    print(f"✓ Saved depth to data/debug/head_depth_d415.png")
     print(f"✓ Env reset OK")
     print(f"  Action space: {env.action_space}")
     print(f"  Obs keys: {list(obs.keys())}")

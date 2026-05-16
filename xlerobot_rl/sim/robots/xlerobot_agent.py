@@ -205,16 +205,20 @@ class XLeRobot2Wheels(BaseAgent):
         return [
             CameraConfig(
                 uid="head_camera",
-                pose=sapien.Pose(p=[0, 0, 0], q=[1, 0, 0, 0]),
-                width=128, height=128, fov=np.deg2rad(52),
-                near=0.01, far=10.0,
-                mount=self.robot.find_link_by_name("head_camera_link"),
+                pose=sapien.Pose(p=[0, 0, 0], q=[1, 0, 0, 0]),   # 不加 rotation, 看默认朝向
+                width=320, height=240,
+                fov=np.deg2rad(69),
+                near=0.16,
+                far=10.0,
+                mount=self.robot.find_link_by_name("head_camera_link"),  # ← sensor body
             ),
             CameraConfig(
                 uid="right_wrist_camera",
                 pose=sapien.Pose(p=[0, 0, 0], q=[1, 0, 0, 0]),
-                width=128, height=128, fov=np.deg2rad(52),
-                near=0.01, far=10.0,
+                width=128, height=128,
+                fov=np.deg2rad(52),
+                near=0.01,
+                far=10.0,
                 mount=self.robot.find_link_by_name("Right_Arm_Camera"),
             ),
         ]
