@@ -18,7 +18,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "black", "ipython", "jupyter", "pdf2image", "pypdf"]
-real = ["pyrealsense2", "lerobot"]      # ← lerobot 挪到这里
+real = [
+    "pyrealsense2",
+    "lerobot==0.4.4",
+    "feetech-servo-sdk>=1.0.0,<2.0.0",  # provides scservo_sdk for SO101 motors
+]
 
 [tool.ruff]
 line-length = 100

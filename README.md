@@ -24,7 +24,8 @@
 | Day 1: M0 接口冻结 | 🟡 进行中 | repo + env setup 已完成 |
 | Day 2: 基础环境 | ✅ 完成 | ManiSkill + PyTorch cu128 sanity check 通过 |
 | Day 3: 真机只读测试 plan | ⬜ 待做 | |
-| Day 4: URDF 接入 ManiSkill | ⬜ 待做 | URDF + meshes 已 commit |
+| Day 4: URDF 接入 ManiSkill | 🟡 进行中 | URDF + right-arm grasp env 已接入 |
+| Day 5: 右臂主从采集链路 | 🟡 进行中 | 左臂拆下作为 SO101 leader, 右臂作为 follower |
 | ... | | |
 
 
@@ -50,13 +51,26 @@ conda activate xlerobot-rl
 # 3. 安装 PyTorch
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 
-# 4. 安装项目 + 依赖
-pip install -e ".[dev]"
+# 4. 安装项目 + dev + 真机依赖
+pip install -e ".[dev,real]"
 
 # 5. 验证安装
-python scripts/test_setup.py
+python scripts/sanity/test_setup.py
 ```
 
 最后一步预期输出 `✓ All systems go`。
 
+## 今日右臂主从链路
 
+```bash
+# 1. 枚举 USB 串口
+python scripts/deploy/right_arm_master_slave.py ports
+
+# 2. 生成校准 / teleop / 采集命令
+python scripts/deploy/right_arm_master_slave.py commands \
+  --leader-port /dev/ttyACM0 \
+  --follower-port /dev/ttyACM1 \
+  --camera-index 0
+```
+
+详细步骤见 `docs/right_arm_master_slave.md`。
