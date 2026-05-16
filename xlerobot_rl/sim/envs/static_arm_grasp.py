@@ -1,7 +1,7 @@
-"""StaticArmGrasp-v0: 静态 base + 单臂抓取红色 cube。
+"""StaticArmGrasp-v0: 静态 base + 单臂抓取色块。
 
 v2 plan §5 的最小 task env. Base 固定在原点, 右臂从 rest 姿态出发,
-抓取桌面上随机位置的红色 cube。
+抓取桌面上随机位置的红色 cube。M1 v0 demo 可开启蓝/绿 distractor。
 
 Action space: 6 维 (右臂 5 joint delta + 1 gripper)
 Observation: head_camera RGB + right_wrist_camera RGB + arm proprio + GT object pose
@@ -50,8 +50,10 @@ class StaticArmGraspEnv(BaseEnv):
         robot_uids="xlerobot_2wheels",
         control_mode="pd_joint_target_delta_pos",
         obs_mode="rgbd",      # ← 默认改成 rgbd (M1v0 需要)
+        include_distractors: bool = False,
         **kwargs,
     ):
+        self.include_distractors = include_distractors
         super().__init__(
             *args,
             robot_uids=robot_uids,
@@ -95,23 +97,34 @@ class StaticArmGraspEnv(BaseEnv):
             initial_pose=sapien.Pose([-0.525, 0, 0.35]),
         )
 
-        # 红色 cube, 加高摩擦防止滑动
+        # 色块, 加高摩擦防止滑动。默认只生成 red cube, 保持原抓取任务不变。
+        self.cubes = {}
         builder = self.scene.create_actor_builder()
         cube_material = sapien.pysapien.physx.PhysxMaterial(
             static_friction=1.0, dynamic_friction=1.0, restitution=0.0,
         )
-        builder.add_box_collision(
-            half_size=[self.CUBE_HALF_SIZE] * 3,
-            material=cube_material, density=200,
-        )
-        builder.add_box_visual(
-            half_size=[self.CUBE_HALF_SIZE] * 3,
-            material=sapien.render.RenderMaterial(base_color=[0.9, 0.1, 0.1, 1]),
-        )
-        builder.initial_pose = sapien.Pose(
-            p=[0, 0, self.TABLE_TOP_Z + self.CUBE_HALF_SIZE]
-        )
-        self.cube = builder.build(name="cube")
+        cube_specs = [
+            ("red", [0.9, 0.1, 0.1, 1]),
+            ("blue", [0.1, 0.2, 0.9, 1]),
+            ("green", [0.1, 0.8, 0.2, 1]),
+        ]
+        for color, rgba in cube_specs:
+            if color != "red" and not self.include_distractors:
+                continue
+            builder = self.scene.create_actor_builder()
+            builder.add_box_collision(
+                half_size=[self.CUBE_HALF_SIZE] * 3,
+                material=cube_material, density=200,
+            )
+            builder.add_box_visual(
+                half_size=[self.CUBE_HALF_SIZE] * 3,
+                material=sapien.render.RenderMaterial(base_color=rgba),
+            )
+            builder.initial_pose = sapien.Pose(
+                p=[0, 0, self.TABLE_TOP_Z + self.CUBE_HALF_SIZE]
+            )
+            self.cubes[color] = builder.build(name=f"{color}_cube")
+        self.cube = self.cubes["red"]
 
         # 缓存 rest qpos 给 reset 用
         self.rest_qpos = torch.as_tensor(
@@ -141,7 +154,8 @@ class StaticArmGraspEnv(BaseEnv):
         init_qpos = init_qpos + noise * noise_mask
         self.agent.robot.set_qpos(init_qpos)
 
-        # Cube 随机 spawn 在桌面可达区域
+        # Red cube 随机 spawn 在桌面可达区域。蓝/绿 distractor 用固定 offset,
+        # 让 M1 v0 可以稳定验证 target/distractor 区分。
         center = torch.tensor(self.SPAWN_CENTER, device=self.device)
         half_range = torch.tensor(self.SPAWN_HALF_RANGE, device=self.device)
         xy_noise = (torch.rand((b, 2), device=self.device) - 0.5) * 2 * half_range
@@ -149,6 +163,17 @@ class StaticArmGraspEnv(BaseEnv):
         xyz[:, :2] = center + xy_noise
         xyz[:, 2] = self.TABLE_TOP_Z + self.CUBE_HALF_SIZE + 1e-3
         self.cube.set_pose(Pose.create_from_pq(p=xyz))
+
+        distractor_offsets = {
+            "blue": torch.tensor([0.06, -0.07], device=self.device),
+            "green": torch.tensor([-0.06, -0.06], device=self.device),
+        }
+        for color, offset in distractor_offsets.items():
+            if color not in self.cubes:
+                continue
+            distractor_xyz = xyz.clone()
+            distractor_xyz[:, :2] = center + offset
+            self.cubes[color].set_pose(Pose.create_from_pq(p=distractor_xyz))
 
         # 记录 cube 初始位置 (用于检测 xy drift)
         if (not hasattr(self, "cube_init_xy")

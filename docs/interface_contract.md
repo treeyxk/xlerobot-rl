@@ -2,12 +2,13 @@
 
 本文档定义项目所有模块间的接口契约。**一旦冻结,改动需走 ADR 流程,所有模块同步更新。**
 
-**Status**: 🟡 Partial (Part 1: 坐标系 + 单位 + 频率 已锁定)
+**Status**: 🟡 Partial (Part 1: 坐标系 + 单位 + 频率 已锁定; Part 2: M1 v0 Semantic Executive schema 已冻结)
 
 待补充部分:
 
 - [ ] TargetObservation dataclass schema
-- [ ] 各模块 input/output schema
+- [x] M1 v0 Semantic Executive input/output schema
+- [ ] M2/M3/M4/M5 input/output schema
 - [ ] Action bounds (具体数值)
 - [ ] Failure mode codes
 
@@ -131,11 +132,156 @@ class TimedEvent:
 
 ## Part 1 结束
 
+---
+
+## 4. M1 v0 Semantic Executive Schema
+
+**Status**: 冻结 v0。用于 Month 1 / W2 色块 demo。后续 tracker、semantic nav、open-vocabulary grounding
+若需要改字段名或字段语义,需走 ADR 并同步所有消费方。
+
+M1 v0 的边界:
+
+- 支持输入色块抓取指令,例如 `"抓红色色块"` / `"抓蓝色色块"` / `"抓绿色块"`。
+- 支持 HSV/SAM2 grounding 输出 target 与 distractors。
+- 输出 `top_grasp` skill proposal 与 `READY_TO_GRASP` navigation mode。
+- 不负责真正导航、抓取控制、状态机审批或安全限幅;这些属于 M2/M4/M5。
+
+代码定义位置:
+
+```python
+from xlerobot_rl.interfaces import TargetState, SemanticExecutiveState
+```
+
+M1 v0 模块实现位置:
+
+```python
+from xlerobot_rl.modules.semantic_executive import ColorBlockSemanticExecutive
+```
+
+### 4.1 TargetState
+
+单个语义接地物体实例。M1 v0 中 target 和 distractor 都使用同一 schema。
+
+```python
+@dataclass
+class TargetState:
+    object_id: int
+    name: str
+    bbox: tuple[int, int, int, int]  # (x1, y1, x2, y2) in pixels
+    mask: np.ndarray                # (H, W) bool
+    pos_camera: np.ndarray          # (3,) xyz in head_cam frame, meters
+    pos_base: np.ndarray            # (3,) xyz in base/world frame, meters
+    confidence: float               # [0, 1]
+    attributes: dict                # e.g. {"color": "red", "category": "cube"}
+    is_target: bool
+    detection_method: str           # "hsv-only" / "hsv+sam2" / ...
+    last_seen_timestamp: float      # UTC seconds
+```
+
+字段约定:
+
+| 字段 | 说明 |
+|------|------|
+| `object_id` | M1 当前帧内唯一 ID。M1.3 tracker 引入前,不保证跨帧稳定。 |
+| `bbox` | 像素坐标,闭开区间语义 `(x1, y1, x2, y2)`。 |
+| `mask` | binary mask,序列化到 JSON 时默认不包含,避免日志过大。 |
+| `pos_camera` | OpenCV camera optical frame,单位米。 |
+| `pos_base` | base/world frame,单位米。当前 sim 中 world 与 base 重合。 |
+| `is_target` | 当前用户指令指定的目标实例为 `True`;其他候选物体为 distractor。 |
+
+### 4.2 SemanticExecutiveState
+
+M1 v0 的唯一正式输出。M5/M2/M3/M4 后续消费 M1 结果时应依赖这个 schema,而不是解析临时 JSON。
+
+```python
+NavigationMode = Literal[
+    "SEARCH", "SEMANTIC_NAV", "SKILL_AWARE_APPROACH",
+    "READY_TO_GRASP", "GRASP", "DONE", "SAFE_STOP",
+]
+
+ExecutionStatus = Literal[
+    "idle", "tracking", "ready", "executing", "success", "failure",
+]
+
+FailureReason = Literal[
+    "none", "target_not_found", "low_confidence", "ambiguous_target",
+    "wrong_object", "target_lost", "unsafe", "timeout",
+]
+
+@dataclass
+class SemanticExecutiveState:
+    instruction: str
+    task_graph: list[str]
+    current_subgoal: str
+    target: TargetState | None
+    scene_objects: list[TargetState]
+    candidate_skills: list[str]
+    selected_skill: str | None
+    navigation_mode: NavigationMode
+    execution_status: ExecutionStatus
+    failure_reason: FailureReason
+    search_goal: np.ndarray | None
+    local_nav_goal: np.ndarray | None
+    success_scores: dict[str, float]
+    uncertainty_scores: dict[str, float]
+    timestamp: float
+```
+
+M1 v0 默认值:
+
+| 字段 | M1 v0 约定 |
+|------|------------|
+| `task_graph` | `["find_target", "navigate_to_skill_success_region", "grasp_target", "verify_success"]` |
+| `current_subgoal` | `"find_target"` |
+| `candidate_skills` | `["top_grasp"]` |
+| `selected_skill` | `"top_grasp"` |
+| `navigation_mode` | 目标已检测到时为 `"READY_TO_GRASP"` |
+| `execution_status` | 正常输出为 `"ready"` |
+| `failure_reason` | 正常输出为 `"none"` |
+
+M1 v0 failure behavior:
+
+| 场景 | `target` | `navigation_mode` | `execution_status` | `failure_reason` |
+|------|----------|-------------------|--------------------|------------------|
+| 指令中无法解析红/蓝/绿目标颜色 | `None` | `"SAFE_STOP"` | `"failure"` | `"ambiguous_target"` |
+| 指令解析成功,但目标颜色未检测到 | `None` | `"SAFE_STOP"` | `"failure"` | `"target_not_found"` |
+| 目标颜色候选多于 1 个 | `None` | `"SAFE_STOP"` | `"failure"` | `"ambiguous_target"` |
+| 唯一目标候选置信度低于 `0.25` | `None` | `"SAFE_STOP"` | `"failure"` | `"low_confidence"` |
+
+M1 v0 不抛出裸解析/检测异常给 M5。M5 只消费结构化 `SemanticExecutiveState` 并根据
+`failure_reason` 决定 re-detect、replan 或 safe-stop。复杂 referring expression 由后续 VLM
+planner/verifier 处理,不属于 M1 v0。
+
+M1 v0 的最小 grounding gate 定义在:
+
+```python
+ColorBlockSemanticExecutive.evaluate_grounding_result()
+```
+
+该 gate 只检查 target 是否存在、是否唯一、confidence 是否达标;不做 VLM 语义验证、目标跟踪或桌面
+几何过滤。
+
+### 4.3 JSON 序列化约定
+
+`SemanticExecutiveState.to_json_dict()` 用于 debug/logging。默认不序列化 `mask`;如需保存 mask,
+使用单独图像/HDF5 字段。
+
+M1 v0 sanity 命令:
+
+```bash
+python scripts/sanity/demo_m1_v0.py --instruction "抓红色色块"
+```
+
+输出:
+
+- `data/debug/m1_v0_semantic_state.json`
+- `data/debug/m1_v0_grounding_overlay.png`
+
 以下为后续待写部分,**作为占位符标识尚未冻结的接口**:
 
-- §4 TargetObservation dataclass
-- §5 各模块 I/O schema
-- §6 Action bounds
-- §7 Failure mode codes
+- TargetObservation dataclass
+- M2/M3/M4/M5 input/output schema
+- Action bounds 具体数值
+- Failure mode codes 完整列表
 
 未冻结之前,代码中不要硬编码相关假设。

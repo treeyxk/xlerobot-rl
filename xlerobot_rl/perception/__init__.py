@@ -5,6 +5,7 @@ Outputs GroundedObject for downstream RL policy / S predictor.
 """
 from xlerobot_rl.perception.data_types import GroundedObject
 from xlerobot_rl.perception.grounding import (
+    HSVColorDetector,
     HSVRedDetector,
     SAM2Refiner,
     GroundingPipeline,
@@ -12,6 +13,7 @@ from xlerobot_rl.perception.grounding import (
 
 __all__ = [
     "GroundedObject",
+    "HSVColorDetector",
     "HSVRedDetector",
     "SAM2Refiner",
     "GroundingPipeline",

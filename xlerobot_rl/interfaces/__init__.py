@@ -6,6 +6,7 @@ Usage:
         WholeBodyAction, BaseSubGoalAction, BaseVelocityAction,
         ArmJointAction, ArmEEAction, ActionBounds,
         RobotInterface, CameraInterface,
+        TargetState, SemanticExecutiveState,
     )
 """
 
@@ -25,6 +26,10 @@ from xlerobot_rl.interfaces.action import (
 )
 from xlerobot_rl.interfaces.robot import RobotInterface
 from xlerobot_rl.interfaces.camera import CameraInterface
+from xlerobot_rl.interfaces.semantic import (
+    TargetState,
+    SemanticExecutiveState,
+)
 
 __all__ = [
     "TargetObservation",
@@ -39,4 +44,6 @@ __all__ = [
     "ActionBounds",
     "RobotInterface",
     "CameraInterface",
+    "TargetState",
+    "SemanticExecutiveState",
 ]

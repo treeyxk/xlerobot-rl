@@ -60,6 +60,31 @@ python scripts/sanity/test_setup.py
 
 最后一步预期输出 `✓ All systems go`。
 
+## M1 v0 色块语义执行层
+
+M1 v0 是当前最小语义 demo: 规则解析红/蓝/绿色块指令,用 HSV/SAM2 grounding 输出
+`SemanticExecutiveState`,并标注 target / distractors、`top_grasp` 和 `READY_TO_GRASP`。
+
+```bash
+# HSV baseline
+python scripts/sanity/demo_m1_v0.py --instruction "抓红色色块" --check
+
+# 使用 SAM2 refinement
+python scripts/sanity/demo_m1_v0.py --instruction "抓红色色块" --use-sam2 --check
+```
+
+输出文件:
+
+- `data/debug/m1_v0_semantic_state.json`
+- `data/debug/m1_v0_grounding_overlay.png`
+
+当前限制:
+
+- 只支持红/蓝/绿色块,不支持开放词汇物体或复杂 referring expression。
+- HSV baseline 可能误检同色机器人部件;这属于 M1 v0 已知限制,后续用 VLM verifier / detector /
+  tracker 替换或增强。
+- 不做目标跟踪、语义导航、抓取执行和安全审批;这些分别属于后续 M1.3、M2、M4、M5。
+
 ## 今日右臂主从链路
 
 ```bash

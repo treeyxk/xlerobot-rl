@@ -1,7 +1,7 @@
 """M1.2 Semantic Grounding: HSV + SAM2 refinement + 3D reconstruction.
 
 Pipeline:
-  1. HSVRedDetector: rgb → coarse red mask (CPU, numpy)
+  1. HSVColorDetector: rgb → coarse color mask (CPU, numpy)
   2. SAM2Refiner: rgb + coarse mask → refined mask (GPU, PyTorch)
   3. depth + refined_mask + K → 3D position in camera frame
   4. T_world_camera @ pos_cam → pos_world
@@ -16,9 +16,6 @@ import cv2
 import numpy as np
 import torch
 
-from sam2.build_sam import build_sam2
-from sam2.sam2_image_predictor import SAM2ImagePredictor
-
 from xlerobot_rl.perception.data_types import GroundedObject
 
 
@@ -30,89 +27,117 @@ _DEFAULT_SAM2_WEIGHTS = Path(__file__).resolve().parents[2] / "data/models/sam2/
 # ============================================================
 # Stage 1: HSV Detector (CPU, numpy)
 # ============================================================
-class HSVRedDetector:
-    """Detect red regions via HSV thresholding.
+class HSVColorDetector:
+    """Detect colored cube regions via HSV thresholding.
     
-    Red wraps around H=0/180 in OpenCV, so we use 2 ranges.
+    This is the M1 v0 color-block baseline from the project plan. It is deliberately
+    limited to red/blue/green blocks, not open-vocabulary grounding.
     """
     
     # OpenCV HSV: H in [0, 179], S/V in [0, 255]
-    # Red has two ranges due to wraparound
-    RED_HSV_LOW_1 = np.array([0, 80, 80])
-    RED_HSV_HIGH_1 = np.array([10, 255, 255])
-    RED_HSV_LOW_2 = np.array([165, 80, 80])
-    RED_HSV_HIGH_2 = np.array([179, 255, 255])
+    HSV_RANGES = {
+        "red": [
+            (np.array([0, 80, 80]), np.array([10, 255, 255])),
+            (np.array([165, 80, 80]), np.array([179, 255, 255])),
+        ],
+        "blue": [
+            (np.array([95, 80, 80]), np.array([130, 255, 255])),
+        ],
+        "green": [
+            (np.array([40, 80, 80]), np.array([85, 255, 255])),
+        ],
+    }
     
     def __init__(
         self,
         min_area_pixels: int = 30,    # 过滤太小的检测 (噪点)
-        max_area_pixels: int = 50000, # 过滤太大的检测 (背景误检)
+        max_area_pixels: int = 2500,  # 过滤车身/桌面等大色块
+        max_bbox_area_pixels: int = 3000,
     ):
         self.min_area_pixels = min_area_pixels
         self.max_area_pixels = max_area_pixels
+        self.max_bbox_area_pixels = max_bbox_area_pixels
     
-    def detect(self, rgb: np.ndarray) -> Optional[dict]:
-        """Detect largest red region.
+    def detect_all(self, rgb: np.ndarray, color: str) -> list[dict]:
+        """Detect largest region for a supported color.
         
         Args:
             rgb: (H, W, 3) uint8 RGB image
+            color: "red", "blue", or "green"
         
         Returns:
-            dict with 'mask' (bool), 'bbox' (x1,y1,x2,y2), 'centroid' (x,y), 'area'
-            None if no valid detection.
+            list of dicts with 'mask', 'bbox', 'centroid', and 'area', sorted by area descending.
         """
         assert rgb.dtype == np.uint8, f"expected uint8, got {rgb.dtype}"
         assert rgb.ndim == 3 and rgb.shape[2] == 3, f"expected (H,W,3), got {rgb.shape}"
+        if color not in self.HSV_RANGES:
+            raise ValueError(f"unsupported HSV color: {color}")
         
         # RGB → HSV
         hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
         
-        # 2 ranges for red
-        mask1 = cv2.inRange(hsv, self.RED_HSV_LOW_1, self.RED_HSV_HIGH_1)
-        mask2 = cv2.inRange(hsv, self.RED_HSV_LOW_2, self.RED_HSV_HIGH_2)
-        mask = cv2.bitwise_or(mask1, mask2)
+        mask = np.zeros(rgb.shape[:2], dtype=np.uint8)
+        for low, high in self.HSV_RANGES[color]:
+            mask = cv2.bitwise_or(mask, cv2.inRange(hsv, low, high))
         
         # Morphology cleanup (close small holes, remove small noise)
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         
-        # Connected components, find largest
+        # Connected components. M1 v0 的目标是桌面小色块, 不能直接取最大
+        # component, 否则蓝色车身会压过蓝色 cube。
         num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
             mask, connectivity=8
         )
         
         # Skip label 0 (background)
         if num_labels <= 1:
-            return None
+            return []
         
-        areas = stats[1:, cv2.CC_STAT_AREA]
-        if areas.size == 0:
-            return None
-        
-        # Largest component
-        largest_idx = int(np.argmax(areas)) + 1   # +1 because we skipped bg
-        largest_area = stats[largest_idx, cv2.CC_STAT_AREA]
-        
-        if not (self.min_area_pixels <= largest_area <= self.max_area_pixels):
-            return None
-        
-        x = stats[largest_idx, cv2.CC_STAT_LEFT]
-        y = stats[largest_idx, cv2.CC_STAT_TOP]
-        w = stats[largest_idx, cv2.CC_STAT_WIDTH]
-        h = stats[largest_idx, cv2.CC_STAT_HEIGHT]
-        bbox = (int(x), int(y), int(x + w), int(y + h))
-        centroid = (float(centroids[largest_idx, 0]), float(centroids[largest_idx, 1]))
-        
-        # Component-only mask
-        component_mask = (labels == largest_idx).astype(bool)
-        
-        return {
-            "mask": component_mask,
-            "bbox": bbox,
-            "centroid": centroid,
-            "area": int(largest_area),
-        }
+        candidates = []
+        for label_idx in range(1, num_labels):
+            area = int(stats[label_idx, cv2.CC_STAT_AREA])
+            x = int(stats[label_idx, cv2.CC_STAT_LEFT])
+            y = int(stats[label_idx, cv2.CC_STAT_TOP])
+            w = int(stats[label_idx, cv2.CC_STAT_WIDTH])
+            h = int(stats[label_idx, cv2.CC_STAT_HEIGHT])
+            bbox_area = w * h
+            if not (self.min_area_pixels <= area <= self.max_area_pixels):
+                continue
+            if bbox_area > self.max_bbox_area_pixels:
+                continue
+            candidates.append((area, label_idx, x, y, w, h))
+
+        if not candidates:
+            return []
+
+        results = []
+        for area, label_idx, x, y, w, h in sorted(candidates, reverse=True):
+            bbox = (int(x), int(y), int(x + w), int(y + h))
+            centroid = (float(centroids[label_idx, 0]), float(centroids[label_idx, 1]))
+            component_mask = (labels == label_idx).astype(bool)
+            results.append(
+                {
+                    "mask": component_mask,
+                    "bbox": bbox,
+                    "centroid": centroid,
+                    "area": int(area),
+                }
+            )
+        return results
+
+    def detect(self, rgb: np.ndarray, color: str) -> Optional[dict]:
+        """Detect the largest valid region for a supported color."""
+        detections = self.detect_all(rgb, color)
+        return detections[0] if detections else None
+
+
+class HSVRedDetector(HSVColorDetector):
+    """Backward-compatible red-only detector used by older sanity scripts."""
+
+    def detect(self, rgb: np.ndarray) -> Optional[dict]:
+        return super().detect(rgb, "red")
 
 
 # ============================================================
@@ -137,7 +162,10 @@ class SAM2Refiner:
         print(f"[SAM2Refiner] Loading SAM2 from {weights_path}")
         print(f"[SAM2Refiner] Using config: {config_name}")
         print(f"[SAM2Refiner] Device: {device}")
-        
+
+        from sam2.build_sam import build_sam2
+        from sam2.sam2_image_predictor import SAM2ImagePredictor
+
         sam_model = build_sam2(config_name, str(weights_path), device=device)
         self.predictor = SAM2ImagePredictor(sam_model)
     
@@ -253,10 +281,10 @@ class GroundingPipeline:
         use_sam2: bool = True,
         sam2_weights_path: Optional[str | Path] = None,
         hsv_min_area: int = 30,
-        hsv_max_area: int = 50000,
+        hsv_max_area: int = 2500,
     ):
         self.use_sam2 = use_sam2
-        self.hsv_detector = HSVRedDetector(
+        self.hsv_detector = HSVColorDetector(
             min_area_pixels=hsv_min_area,
             max_area_pixels=hsv_max_area,
         )
@@ -286,12 +314,67 @@ class GroundingPipeline:
         Returns:
             GroundedObject or None (if no red detected)
         """
-        # Stage 1: HSV
-        hsv_result = self.hsv_detector.detect(rgb)
-        if hsv_result is None:
-            return None
-        
-        # Stage 2: SAM2 refine (optional)
+        return self.detect_color_cube(
+            rgb=rgb,
+            depth_meters=depth_meters,
+            K=K,
+            T_world_camera=T_world_camera,
+            color="red",
+            object_id=object_id,
+            target_color="red",
+        )
+
+    def detect_color_cube(
+        self,
+        rgb: np.ndarray,
+        depth_meters: np.ndarray,
+        K: np.ndarray,
+        T_world_camera: np.ndarray,
+        color: str,
+        object_id: int = 0,
+        target_color: str | None = None,
+    ) -> Optional[GroundedObject]:
+        """Detect one colored cube and return its grounded object record."""
+        hsv_results = self.hsv_detector.detect_all(rgb, color)
+        for hsv_result in hsv_results:
+            return self._ground_hsv_result(
+                rgb=rgb,
+                depth_meters=depth_meters,
+                K=K,
+                T_world_camera=T_world_camera,
+                color=color,
+                object_id=object_id,
+                target_color=target_color,
+                hsv_result=hsv_result,
+            )
+        return None
+
+    def detect_colored_cubes(
+        self,
+        rgb: np.ndarray,
+        depth_meters: np.ndarray,
+        K: np.ndarray,
+        T_world_camera: np.ndarray,
+        target_color: str,
+        colors: tuple[str, ...] = ("red", "blue", "green"),
+    ) -> list[GroundedObject]:
+        """Detect supported colored cubes and mark target vs distractors."""
+        objects: list[GroundedObject] = []
+        for color in colors:
+            obj = self.detect_color_cube(
+                rgb=rgb,
+                depth_meters=depth_meters,
+                K=K,
+                T_world_camera=T_world_camera,
+                color=color,
+                object_id=len(objects),
+                target_color=target_color,
+            )
+            if obj is not None:
+                objects.append(obj)
+        return objects
+
+    def _refine_mask(self, rgb: np.ndarray, hsv_result: dict) -> tuple[np.ndarray, str]:
         if self.use_sam2:
             try:
                 refined_mask = self.sam2_refiner.refine(
@@ -299,16 +382,28 @@ class GroundingPipeline:
                     bbox=hsv_result["bbox"],
                     centroid=hsv_result["centroid"],
                 )
-                detection_method = "hsv+sam2"
+                return refined_mask, "hsv+sam2"
             except Exception as e:
                 print(f"[GroundingPipeline] SAM2 failed: {e}, fallback to HSV")
-                refined_mask = hsv_result["mask"]
-                detection_method = "hsv-only-fallback"
-        else:
-            refined_mask = hsv_result["mask"]
-            detection_method = "hsv-only"
-        
-        # Stage 3+4: 3D reconstruction
+                return hsv_result["mask"], "hsv-only-fallback"
+        return hsv_result["mask"], "hsv-only"
+
+    def _ground_hsv_result(
+        self,
+        rgb: np.ndarray,
+        depth_meters: np.ndarray,
+        K: np.ndarray,
+        T_world_camera: np.ndarray,
+        color: str,
+        object_id: int,
+        target_color: str | None,
+        hsv_result: dict,
+    ) -> Optional[GroundedObject]:
+        refined_mask, detection_method = self._refine_mask(
+            rgb=rgb,
+            hsv_result=hsv_result,
+        )
+
         try:
             pos_cam, pos_world = mask_to_3d_position(
                 mask=refined_mask,
@@ -317,26 +412,27 @@ class GroundingPipeline:
                 T_world_camera=T_world_camera,
             )
         except ValueError as e:
-            print(f"[GroundingPipeline] 3D reconstruction failed: {e}")
+            print(f"[GroundingPipeline] 3D reconstruction failed for {color}: {e}")
             return None
-        
-        # Re-compute bbox from refined mask
+
         ys, xs = np.where(refined_mask)
+        if len(xs) == 0:
+            return None
         bbox = (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
-        
-        # Confidence: ratio of refined mask pixels to bbox area (compactness proxy)
+
         bbox_area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
         confidence = float(refined_mask.sum() / max(bbox_area, 1))
-        
+        is_target = target_color is not None and color == target_color
+
         return GroundedObject(
             object_id=object_id,
-            name="red_cube",
+            name=f"{color}_cube",
             bbox=bbox,
             mask=refined_mask,
             pos_camera=pos_cam,
             pos_world=pos_world,
             confidence=confidence,
-            attributes={"color": "red"},
-            is_target=True,
+            attributes={"color": color, "category": "cube"},
+            is_target=is_target,
             detection_method=detection_method,
         )
