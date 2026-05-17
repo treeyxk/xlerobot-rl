@@ -19,13 +19,14 @@ import xlerobot_rl.sim.envs  # noqa: F401
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--env-id", default="StaticArmGrasp-v0")
     parser.add_argument("--n-episodes", type=int, default=20)
     parser.add_argument("--num-envs", type=int, default=4, help="parallel envs")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
     env = gym.make(
-        "StaticArmGrasp-v0",
+        args.env_id,
         num_envs=args.num_envs,
         obs_mode="state",   # 不渲染 camera 加速
         sim_backend="gpu",
@@ -65,7 +66,7 @@ def main():
     avg_lift = np.mean(final_lift_heights)
 
     print(f"\n{'='*50}")
-    print(f"Results over {n_total} episodes (random actions):")
+    print(f"Results for {args.env_id} over {n_total} episodes (random actions):")
     print(f"  Success rate:        {succ_rate:.1f}%")
     print(f"  Final grasp rate:    {grasp_rate:.1f}%")
     print(f"  Avg final lift:      {avg_lift:+.4f}m")

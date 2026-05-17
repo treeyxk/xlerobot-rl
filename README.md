@@ -85,6 +85,16 @@ python scripts/sanity/demo_m1_v0.py --instruction "抓红色色块" --use-sam2 -
   tracker 替换或增强。
 - 不做目标跟踪、语义导航、抓取执行和安全审批;这些分别属于后续 M1.3、M2、M4、M5。
 
+## M4 target-conditioned 抓取环境
+
+```bash
+python scripts/sanity/check_m4_target_env.py --target-color red
+python scripts/eval/eval_env_random.py --env-id TargetConditionedArmGrasp-v0 --n-episodes 20 --num-envs 4
+```
+
+环境设计见 `docs/m4_target_conditioned_env.md`。BC 数据格式见
+`docs/bc_dataset_schema.md` / `docs/bc_dataset_schema_zh.md`。
+
 ## 今日右臂主从链路
 
 ```bash
@@ -99,3 +109,19 @@ python scripts/deploy/right_arm_master_slave.py commands \
 ```
 
 详细步骤见 `docs/right_arm_master_slave.md`。
+
+## BC demo 录制流程
+
+硬件标定完成前可以先 dry-run 录制流程,生成 metadata 模板并打印 LeRobot 命令:
+
+```bash
+python scripts/deploy/record_bc_demo.py \
+  --leader-port /dev/ttyACM0 \
+  --follower-port /dev/ttyACM1 \
+  --target-color red \
+  --num-episodes 2 \
+  --episode-time-s 15 \
+  --camera-index 0
+```
+
+确认校准和 10s teleop smoke test 通过后,才添加 `--run-record` 实际录制。
