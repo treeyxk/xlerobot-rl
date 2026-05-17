@@ -237,6 +237,48 @@ For the first smoke dataset, it is acceptable to leave `target_mask`,
 `distractor_mask`, and `target_pos_base` empty if the purpose is only to verify
 recording integrity. Formal BC training data must fill target conditioning fields.
 
+### Smoke Recording Entry Point
+
+Use `scripts/deploy/record_bc_demo.py` as the real LeRobot smoke/BC recording
+entry point. By default it is a dry run: it writes
+`data/bc/<dataset_name>/dataset_info.yaml` and prints the calibration, teleop,
+and record commands.
+
+```bash
+python scripts/deploy/record_bc_demo.py \
+  --leader-port /dev/ttyACM0 \
+  --follower-port /dev/ttyACM1 \
+  --target-color red \
+  --num-episodes 2 \
+  --episode-time-s 15 \
+  --camera-index /dev/video6
+```
+
+After calibration and the 10s teleop smoke test pass, add `--run-record`. Before
+starting `lerobot-record`, the script prints a checklist and waits for operator
+confirmation:
+
+- Press `Space` to start recording.
+- Press `q` to cancel before `lerobot-record` starts.
+- Add `--no-ready-prompt` for non-interactive automation.
+
+Prefer stable `/dev/video*` paths for `--camera-index` instead of numeric camera
+indices. Use `lerobot-find-cameras opencv` to list candidates. The helper passes
+`--dataset.vcodec=h264` by default so the resulting videos are easier to inspect
+locally than LeRobot's default `libsvtav1`.
+
+Raw LeRobot data is written to:
+
+```text
+data/real/lerobot/<dataset_name>/
+```
+
+The project-side metadata template is written to:
+
+```text
+data/bc/<dataset_name>/dataset_info.yaml
+```
+
 ## Data Quality Gates
 
 Before a dataset is used for BC:

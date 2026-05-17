@@ -105,7 +105,7 @@ python scripts/deploy/right_arm_master_slave.py ports
 python scripts/deploy/right_arm_master_slave.py commands \
   --leader-port /dev/ttyACM0 \
   --follower-port /dev/ttyACM1 \
-  --camera-index 0
+  --camera-index /dev/video6
 ```
 
 详细步骤见 `docs/right_arm_master_slave.md`。
@@ -121,7 +121,34 @@ python scripts/deploy/record_bc_demo.py \
   --target-color red \
   --num-episodes 2 \
   --episode-time-s 15 \
-  --camera-index 0
+  --camera-index /dev/video6
 ```
 
-确认校准和 10s teleop smoke test 通过后,才添加 `--run-record` 实际录制。
+建议用稳定的设备路径 `/dev/video*`,而不是易变化的数字 index。可用下面命令查看相机:
+
+```bash
+lerobot-find-cameras opencv
+```
+
+确认校准和 10s teleop smoke test 通过后,才添加 `--run-record` 实际录制:
+
+```bash
+python scripts/deploy/record_bc_demo.py \
+  --leader-port /dev/ttyACM0 \
+  --follower-port /dev/ttyACM1 \
+  --target-color red \
+  --num-episodes 2 \
+  --episode-time-s 15 \
+  --camera-index /dev/video6 \
+  --run-record
+```
+
+实际录制前脚本会打印准备 checklist,并等待按键确认:
+
+- 按 `Space` 开始录制。
+- 按 `q` 取消,不会启动 `lerobot-record`。
+- 如需自动化跳过确认,添加 `--no-ready-prompt`。
+
+脚本默认使用 `--dataset.vcodec=h264`,便于后续用 OpenCV 或常规播放器检查视频。
+原始 LeRobot 数据写入 `data/real/lerobot/<dataset_name>/`,伴随 metadata 模板写入
+`data/bc/<dataset_name>/dataset_info.yaml`。

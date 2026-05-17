@@ -7,8 +7,12 @@ only after calibration and a short teleop smoke test pass.
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
+import sys
+import termios
 import subprocess
+import tty
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,7 +27,7 @@ COLOR_TO_ID = {"red": 0, "blue": 1, "green": 2}
 def _quote(value: str) -> str:
     if not value:
         return "''"
-    if all(ch.isalnum() or ch in "/._-:" for ch in value):
+    if all(ch.isalnum() or ch in "/._-:=" for ch in value):
         return value
     return "'" + value.replace("'", "'\"'\"'") + "'"
 
@@ -31,15 +35,27 @@ def _quote(value: str) -> str:
 def _format_command(parts: list[str]) -> str:
     lines = [parts[0]]
     for part in parts[1:]:
-        lines.append(f"  {part}")
+        lines.append(f"  {_quote(part)}")
     return " \\\n".join(lines)
 
 
 def _camera_config(args: argparse.Namespace) -> str:
-    return (
-        "{front: {type: opencv, index_or_path: "
-        f"{args.camera_index}, width: {args.camera_width}, "
-        f"height: {args.camera_height}, fps: {args.camera_fps}}}}}"
+    camera_index_or_path: int | str = args.camera_index
+    if isinstance(camera_index_or_path, str) and camera_index_or_path.isdigit():
+        camera_index_or_path = int(camera_index_or_path)
+
+    # Current LeRobot/draccus accepts dict values as JSON strings for CLI args.
+    return json.dumps(
+        {
+            "front": {
+                "type": "opencv",
+                "index_or_path": camera_index_or_path,
+                "width": args.camera_width,
+                "height": args.camera_height,
+                "fps": args.camera_fps,
+            }
+        },
+        separators=(",", ":"),
     )
 
 
@@ -48,21 +64,22 @@ def build_record_parts(args: argparse.Namespace) -> list[str]:
     return [
         "lerobot-record",
         "--robot.type=so101_follower",
-        f"--robot.port={_quote(args.follower_port)}",
-        f"--robot.id={_quote(args.follower_id)}",
+        f"--robot.port={args.follower_port}",
+        f"--robot.id={args.follower_id}",
         f"--robot.max_relative_target={args.max_relative_target}",
-        f"--robot.cameras={_quote(_camera_config(args))}",
+        f"--robot.cameras={_camera_config(args)}",
         "--teleop.type=so101_leader",
-        f"--teleop.port={_quote(args.leader_port)}",
-        f"--teleop.id={_quote(args.leader_id)}",
-        f"--dataset.repo_id={_quote(dataset_repo_id)}",
-        f"--dataset.root={_quote(str(args.raw_dataset_root))}",
+        f"--teleop.port={args.leader_port}",
+        f"--teleop.id={args.leader_id}",
+        f"--dataset.repo_id={dataset_repo_id}",
+        f"--dataset.root={args.raw_dataset_root}",
         f"--dataset.num_episodes={args.num_episodes}",
         f"--dataset.episode_time_s={args.episode_time_s}",
         f"--dataset.reset_time_s={args.reset_time_s}",
-        f"--dataset.single_task={_quote(args.instruction)}",
+        f"--dataset.single_task={args.instruction}",
         "--dataset.push_to_hub=false",
         "--dataset.video=true",
+        f"--dataset.vcodec={args.vcodec}",
         f"--display_data={str(args.display_data).lower()}",
     ]
 
@@ -161,6 +178,7 @@ camera:
   width: {args.camera_width}
   height: {args.camera_height}
   fps: {args.camera_fps}
+video_codec: "{args.vcodec}"
 created_at: "{created_at}"
 git_commit: "{git_commit()}"
 notes: "Smoke/BC recording metadata. Target conditioning fields may require post-processing."
@@ -176,6 +194,41 @@ def check_console_scripts() -> list[str]:
         for name in ("lerobot-calibrate", "lerobot-teleoperate", "lerobot-record")
         if shutil.which(name) is None
     ]
+
+
+def print_recording_reminders(args: argparse.Namespace) -> None:
+    print("\nPre-record checklist:")
+    print(f"  - Target cube is {args.target_color} and is visible from camera {args.camera_index}.")
+    print("  - Distractor blocks are placed, but not blocking the target.")
+    print("  - Right follower arm starts from a safe neutral pose.")
+    print("  - Leader arm can move freely and does not hit the table or camera.")
+    print("  - Emergency stop / power switch is reachable.")
+    print(f"  - You are about to record {args.num_episodes} episode(s), {args.episode_time_s}s each.")
+
+
+def wait_for_space_to_record() -> bool:
+    prompt = "\nPress SPACE to start recording, or q to cancel: "
+    if not sys.stdin.isatty():
+        answer = input("\nType 'start' to begin recording, or anything else to cancel: ")
+        return answer.strip().lower() == "start"
+
+    print(prompt, end="", flush=True)
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        while True:
+            ch = sys.stdin.read(1)
+            if ch == " ":
+                print("start")
+                return True
+            if ch.lower() == "q":
+                print("cancel")
+                return False
+            if ch == "\x03":
+                raise KeyboardInterrupt
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -200,11 +253,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--camera-width", type=int, default=640)
     parser.add_argument("--camera-height", type=int, default=480)
     parser.add_argument("--camera-fps", type=int, default=30)
+    parser.add_argument(
+        "--vcodec",
+        default="h264",
+        help="LeRobot video codec. h264 is easier to inspect locally than the default libsvtav1.",
+    )
     parser.add_argument("--display-data", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--run-record",
         action="store_true",
         help="Actually execute lerobot-record. Default only prints commands.",
+    )
+    parser.add_argument(
+        "--ready-prompt",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Pause before recording and wait for SPACE. Enabled by default.",
     )
     return parser
 
@@ -249,6 +313,11 @@ def main() -> int:
     if not args.run_record:
         print("\nDry run only. Add --run-record to execute lerobot-record.")
         return 0
+
+    print_recording_reminders(args)
+    if args.ready_prompt and not wait_for_space_to_record():
+        print("Recording cancelled before lerobot-record was started.")
+        return 130
 
     print("\nExecuting lerobot-record...")
     return subprocess.run(record_parts).returncode

@@ -50,7 +50,7 @@ lerobot-find-port
 python scripts/deploy/right_arm_master_slave.py commands \
   --leader-port /dev/ttyACM0 \
   --follower-port /dev/ttyACM1 \
-  --camera-index 0
+  --camera-index /dev/video6
 ```
 
 脚本会打印校准、短时 teleop 和短 episode 录制命令。
@@ -108,28 +108,20 @@ lerobot-teleoperate \
 
 ### 3.5 采集一条最小数据
 
-确认 teleop 正常后, 采 2 个 15 秒 episode:
+确认 teleop 正常后, 用项目脚本采 2 个 15 秒 episode。先 dry-run 检查命令和 metadata:
 
 ```bash
-lerobot-record \
-  --robot.type=so101_follower \
-  --robot.port=/dev/ttyACM1 \
-  --robot.id=right_follower \
-  --robot.max_relative_target=15 \
-  --robot.cameras="{front: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}" \
-  --teleop.type=so101_leader \
-  --teleop.port=/dev/ttyACM0 \
-  --teleop.id=left_leader \
-  --dataset.repo_id=local/xlerobot_right_arm_smoke \
-  --dataset.root=data/real/lerobot/xlerobot_right_arm_smoke \
-  --dataset.num_episodes=2 \
-  --dataset.episode_time_s=15 \
-  --dataset.reset_time_s=10 \
-  --dataset.single_task="Pick up the red cube with the right arm" \
-  --dataset.push_to_hub=false \
-  --dataset.video=true \
-  --display_data=true
+python scripts/deploy/record_bc_demo.py \
+  --leader-port /dev/ttyACM0 \
+  --follower-port /dev/ttyACM1 \
+  --target-color red \
+  --num-episodes 2 \
+  --episode-time-s 15 \
+  --camera-index /dev/video6
 ```
+
+实际录制时添加 `--run-record`。脚本会在启动 `lerobot-record` 前打印 checklist,
+等待按 `Space` 开始;按 `q` 会取消录制。默认视频编码为 `h264`,便于本地检查。
 
 ## 4. 与训练接口的关系
 
