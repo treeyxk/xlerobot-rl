@@ -273,6 +273,17 @@ data/real/lerobot/<dataset_name>/
 data/bc/<dataset_name>/dataset_info.yaml
 ```
 
+录制完成后用 checker 确认 LeRobot 原始数据完整:
+
+```bash
+python scripts/sanity/check_lerobot_dataset.py \
+  --dataset-root data/real/lerobot/<dataset_name> \
+  --expect-episodes 1 \
+  --expect-fps 30 \
+  --expect-width 1280 \
+  --expect-height 720
+```
+
 ## 数据质量 Gate
 
 BC 训练前必须检查:

@@ -286,6 +286,18 @@ The project-side metadata template is written to:
 data/bc/<dataset_name>/dataset_info.yaml
 ```
 
+After recording, run the dataset checker to ensure the raw LeRobot dataset was
+finalized:
+
+```bash
+python scripts/sanity/check_lerobot_dataset.py \
+  --dataset-root data/real/lerobot/<dataset_name> \
+  --expect-episodes 1 \
+  --expect-fps 30 \
+  --expect-width 1280 \
+  --expect-height 720
+```
+
 ## Data Quality Gates
 
 Before a dataset is used for BC:

@@ -156,3 +156,14 @@ python scripts/deploy/record_bc_demo.py \
 脚本默认使用 `--dataset.vcodec=h264`,便于后续用 OpenCV 或常规播放器检查视频。
 原始 LeRobot 数据写入 `data/real/lerobot/<dataset_name>/`,伴随 metadata 模板写入
 `data/bc/<dataset_name>/dataset_info.yaml`。
+
+录制结束后运行数据完整性检查:
+
+```bash
+python scripts/sanity/check_lerobot_dataset.py \
+  --dataset-root data/real/lerobot/m4_target_grasp_v0_720p_smoke_runN \
+  --expect-episodes 1 \
+  --expect-fps 30 \
+  --expect-width 1280 \
+  --expect-height 720
+```

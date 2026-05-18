@@ -203,6 +203,20 @@ python scripts/deploy/record_bc_demo.py \
 实际录制时添加 `--run-record`。脚本会在启动 `lerobot-record` 前打印 checklist,
 等待按 `Space` 开始;按 `q` 会取消录制。默认视频编码为 `h264`,便于本地检查。
 
+录制结束后检查数据是否完整 finalize:
+
+```bash
+python scripts/sanity/check_lerobot_dataset.py \
+  --dataset-root data/real/lerobot/<dataset_name> \
+  --expect-episodes 1 \
+  --expect-fps 30 \
+  --expect-width 1280 \
+  --expect-height 720
+```
+
+检查通过时应看到 `Result: PASS`。如果缺少 `meta/episodes`、`meta/stats.json` 或标准
+`videos/.../file-000.mp4`,说明该 run 没有完成 finalize,不要用于训练。
+
 ## 4. 与训练接口的关系
 
 训练侧只消费右臂 6 维 action:
