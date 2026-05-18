@@ -246,12 +246,10 @@ and record commands.
 
 ```bash
 python scripts/deploy/record_bc_demo.py \
-  --leader-port /dev/ttyACM0 \
-  --follower-port /dev/ttyACM1 \
   --target-color red \
-  --num-episodes 2 \
-  --episode-time-s 15 \
-  --camera-index /dev/video6
+  --dataset-name m4_target_grasp_v0_720p_smoke \
+  --num-episodes 1 \
+  --episode-time-s 10
 ```
 
 After calibration and the 10s teleop smoke test pass, add `--run-record`. Before
@@ -262,8 +260,17 @@ confirmation:
 - Press `q` to cancel before `lerobot-record` starts.
 - Add `--no-ready-prompt` for non-interactive automation.
 
-Prefer stable `/dev/video*` paths for `--camera-index` instead of numeric camera
-indices. Use `lerobot-find-cameras opencv` to list candidates. The helper passes
+The verified real-hardware device names are recorded in
+`configs/real/xlerobot_right_arm_720p.yaml`:
+
+```text
+leader: /dev/xlerobot_left_leader
+follower: /dev/xlerobot_right_follower
+camera: /dev/xlerobot_head_camera
+camera profile: 1280x720@30 h264
+```
+
+Use `lerobot-find-cameras opencv` to list camera candidates. The helper passes
 `--dataset.vcodec=h264` by default so the resulting videos are easier to inspect
 locally than LeRobot's default `libsvtav1`.
 

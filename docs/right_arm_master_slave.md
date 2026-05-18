@@ -26,6 +26,86 @@ joint delta。
 
 ## 3. 今日最小路径
 
+当前已验证的固定设备名:
+
+```text
+left_leader     -> /dev/xlerobot_left_leader
+right_follower  -> /dev/xlerobot_right_follower
+head_camera     -> /dev/xlerobot_head_camera
+camera profile  -> 1280x720@30, h264
+```
+
+项目记录配置见 `configs/real/xlerobot_right_arm_720p.yaml`。
+
+### 3.0 固定 udev 设备名
+
+本机已验证的硬件 serial:
+
+| 设备 | 稳定路径 | serial / 匹配条件 |
+|------|----------|-------------------|
+| right follower | `/dev/xlerobot_right_follower` | `5B14028939` |
+| left leader | `/dev/xlerobot_left_leader` | `5B14112340` |
+| RealSense head RGB | `/dev/xlerobot_head_camera` | `123423024637`, USB interface `03`, V4L capture |
+
+串口规则:
+
+```bash
+sudo tee /etc/udev/rules.d/99-xlerobot-serial.rules >/dev/null <<'EOF'
+KERNEL=="ttyACM*", SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", ATTRS{serial}=="5B14028939", SYMLINK+="xlerobot_right_follower", MODE="0660", GROUP="dialout", TAG+="uaccess"
+KERNEL=="ttyACM*", SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", ATTRS{serial}=="5B14112340", SYMLINK+="xlerobot_left_leader", MODE="0660", GROUP="dialout", TAG+="uaccess"
+EOF
+```
+
+相机规则:
+
+```bash
+sudo tee /etc/udev/rules.d/99-xlerobot-camera.rules >/dev/null <<'EOF'
+KERNEL=="video*", SUBSYSTEM=="video4linux", ENV{ID_VENDOR_ID}=="8086", ENV{ID_MODEL_ID}=="0ad3", ENV{ID_SERIAL_SHORT}=="123423024637", ENV{ID_USB_INTERFACE_NUM}=="03", ENV{ID_V4L_CAPABILITIES}==":capture:", SYMLINK+="xlerobot_head_camera", MODE="0660", GROUP="video", TAG+="uaccess"
+EOF
+```
+
+刷新并重新插拔 USB:
+
+```bash
+sudo rm -f /dev/xlerobot_left_leader /dev/xlerobot_right_follower /dev/xlerobot_head_camera
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+验证:
+
+```bash
+ls -l /dev/xlerobot_*
+```
+
+预期:
+
+```text
+/dev/xlerobot_left_leader -> ttyACM?
+/dev/xlerobot_right_follower -> ttyACM?
+/dev/xlerobot_head_camera -> video?
+```
+
+注意: udev rule 必须一条规则写在一整行。不要在 nano 中把同一条 rule 拆成多行,
+否则可能会错误地创建到 `bus/usb/...` 而不是 `ttyACM?`。
+
+本轮综合 smoke 通过的数据集:
+
+```text
+data/real/lerobot/m4_target_grasp_v0_720p_fixed_devices_smoke_run2
+```
+
+检查结果:
+
+```text
+episodes: 1
+frames: 300
+duration: 10s
+video: 1280x720 h264
+OpenCV decode: OK
+action/state shape: 6
+```
+
 ### 3.1 找串口
 
 ```bash
@@ -48,9 +128,11 @@ lerobot-find-port
 
 ```bash
 python scripts/deploy/right_arm_master_slave.py commands \
-  --leader-port /dev/ttyACM0 \
-  --follower-port /dev/ttyACM1 \
-  --camera-index /dev/video6
+  --leader-port /dev/xlerobot_left_leader \
+  --follower-port /dev/xlerobot_right_follower \
+  --camera-index /dev/xlerobot_head_camera \
+  --camera-width 1280 \
+  --camera-height 720
 ```
 
 脚本会打印校准、短时 teleop 和短 episode 录制命令。
@@ -62,7 +144,7 @@ python scripts/deploy/right_arm_master_slave.py commands \
 ```bash
 lerobot-calibrate \
   --teleop.type=so101_leader \
-  --teleop.port=/dev/ttyACM0 \
+  --teleop.port=/dev/xlerobot_left_leader \
   --teleop.id=left_leader
 ```
 
@@ -71,7 +153,7 @@ lerobot-calibrate \
 ```bash
 lerobot-calibrate \
   --robot.type=so101_follower \
-  --robot.port=/dev/ttyACM1 \
+  --robot.port=/dev/xlerobot_right_follower \
   --robot.id=right_follower
 ```
 
@@ -86,15 +168,15 @@ lerobot-calibrate \
 ```bash
 lerobot-teleoperate \
   --robot.type=so101_follower \
-  --robot.port=/dev/ttyACM1 \
+  --robot.port=/dev/xlerobot_right_follower \
   --robot.id=right_follower \
   --robot.max_relative_target=15 \
   --teleop.type=so101_leader \
-  --teleop.port=/dev/ttyACM0 \
+  --teleop.port=/dev/xlerobot_left_leader \
   --teleop.id=left_leader \
   --fps=15 \
   --teleop_time_s=10 \
-  --display_data=true
+  --display_data=false
 ```
 
 通过条件:
@@ -112,12 +194,10 @@ lerobot-teleoperate \
 
 ```bash
 python scripts/deploy/record_bc_demo.py \
-  --leader-port /dev/ttyACM0 \
-  --follower-port /dev/ttyACM1 \
   --target-color red \
-  --num-episodes 2 \
-  --episode-time-s 15 \
-  --camera-index /dev/video6
+  --dataset-name m4_target_grasp_v0_720p_smoke \
+  --num-episodes 1 \
+  --episode-time-s 10
 ```
 
 实际录制时添加 `--run-record`。脚本会在启动 `lerobot-record` 前打印 checklist,

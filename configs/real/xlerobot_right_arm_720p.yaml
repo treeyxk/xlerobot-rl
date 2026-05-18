@@ -1,0 +1,42 @@
+# Verified real-hardware smoke configuration.
+# Last smoke: m4_target_grasp_v0_720p_fixed_devices_smoke_run2
+
+robot:
+  type: so101_follower
+  id: right_follower
+  port: /dev/xlerobot_right_follower
+  max_relative_target: 15
+  use_degrees: true
+
+teleop:
+  type: so101_leader
+  id: left_leader
+  port: /dev/xlerobot_left_leader
+  teleop_time_s: 10
+
+camera:
+  name: front
+  role: head_camera
+  type: opencv
+  index_or_path: /dev/xlerobot_head_camera
+  width: 1280
+  height: 720
+  fps: 30
+  video_codec: h264
+  intrinsics: configs/calibration/head_camera_intrinsics_1280x720.yaml
+
+recording:
+  dataset_name: m4_target_grasp_v0_720p_smoke
+  target_color: red
+  num_episodes: 1
+  episode_time_s: 10
+  reset_time_s: 10
+  control_fps: 15
+  display_data: false
+  ready_prompt: true
+
+udev:
+  right_follower_serial: "5B14028939"
+  left_leader_serial: "5B14112340"
+  head_camera_serial: "123423024637"
+  head_camera_usb_interface_num: "03"

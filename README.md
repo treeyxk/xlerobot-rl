@@ -97,34 +97,40 @@ python scripts/eval/eval_env_random.py --env-id TargetConditionedArmGrasp-v0 --n
 
 ## 今日右臂主从链路
 
+当前真机 smoke 已固定并验证:
+
+- `leader`: `/dev/xlerobot_left_leader`
+- `follower`: `/dev/xlerobot_right_follower`
+- `head camera`: `/dev/xlerobot_head_camera`
+- camera profile: `1280x720@30`, `h264`
+
 ```bash
 # 1. 枚举 USB 串口
 python scripts/deploy/right_arm_master_slave.py ports
 
 # 2. 生成校准 / teleop / 采集命令
 python scripts/deploy/right_arm_master_slave.py commands \
-  --leader-port /dev/ttyACM0 \
-  --follower-port /dev/ttyACM1 \
-  --camera-index /dev/video6
+  --leader-port /dev/xlerobot_left_leader \
+  --follower-port /dev/xlerobot_right_follower \
+  --camera-index /dev/xlerobot_head_camera \
+  --camera-width 1280 \
+  --camera-height 720
 ```
 
 详细步骤见 `docs/right_arm_master_slave.md`。
 
 ## BC demo 录制流程
 
-硬件标定完成前可以先 dry-run 录制流程,生成 metadata 模板并打印 LeRobot 命令:
+已验证配置见 `configs/real/xlerobot_right_arm_720p.yaml`。默认 dry-run 会使用固定设备名和
+`1280x720@30 h264`,生成 metadata 模板并打印 LeRobot 命令:
 
 ```bash
 python scripts/deploy/record_bc_demo.py \
-  --leader-port /dev/ttyACM0 \
-  --follower-port /dev/ttyACM1 \
   --target-color red \
-  --num-episodes 2 \
-  --episode-time-s 15 \
-  --camera-index /dev/video6
+  --dataset-name m4_target_grasp_v0_720p_smoke
 ```
 
-建议用稳定的设备路径 `/dev/video*`,而不是易变化的数字 index。可用下面命令查看相机:
+可用下面命令检查相机枚举:
 
 ```bash
 lerobot-find-cameras opencv
@@ -134,12 +140,10 @@ lerobot-find-cameras opencv
 
 ```bash
 python scripts/deploy/record_bc_demo.py \
-  --leader-port /dev/ttyACM0 \
-  --follower-port /dev/ttyACM1 \
   --target-color red \
-  --num-episodes 2 \
-  --episode-time-s 15 \
-  --camera-index /dev/video6 \
+  --dataset-name m4_target_grasp_v0_720p_smoke_runN \
+  --num-episodes 1 \
+  --episode-time-s 10 \
   --run-record
 ```
 

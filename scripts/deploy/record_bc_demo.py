@@ -21,6 +21,13 @@ DEFAULT_LEADER_ID = "left_leader"
 DEFAULT_FOLLOWER_ID = "right_follower"
 DEFAULT_DATASET_NAME = "m4_target_grasp_v0_smoke"
 DEFAULT_TASK = "Pick up the red cube with the right arm"
+DEFAULT_LEADER_PORT = "/dev/xlerobot_left_leader"
+DEFAULT_FOLLOWER_PORT = "/dev/xlerobot_right_follower"
+DEFAULT_CAMERA_INDEX = "/dev/xlerobot_head_camera"
+DEFAULT_CAMERA_WIDTH = 1280
+DEFAULT_CAMERA_HEIGHT = 720
+DEFAULT_CAMERA_FPS = 30
+DEFAULT_VCODEC = "h264"
 COLOR_TO_ID = {"red": 0, "blue": 1, "green": 2}
 
 
@@ -196,6 +203,28 @@ def check_console_scripts() -> list[str]:
     ]
 
 
+def has_lerobot_episode_data(dataset_root: Path) -> bool:
+    return any(dataset_root.glob("data/chunk-*/file-*.parquet")) or any(
+        dataset_root.glob("videos/*/chunk-*/file-*.mp4")
+    )
+
+
+def check_record_output_path(args: argparse.Namespace) -> bool:
+    if not args.raw_dataset_root.exists():
+        return True
+
+    print("\nERROR: LeRobot dataset root already exists:")
+    print(f"  {args.raw_dataset_root}")
+    if has_lerobot_episode_data(args.raw_dataset_root):
+        print("It appears to contain episode data. Use a new --dataset-name to avoid mixing runs.")
+    else:
+        print("It does not appear to contain episode parquet/video files; it may be a failed partial run.")
+        print("Remove it manually if you want to reuse the same dataset name.")
+    print("\nRecommended: rerun with a fresh name, for example:")
+    print(f"  --dataset-name {args.dataset_name}_run2")
+    return False
+
+
 def print_recording_reminders(args: argparse.Namespace) -> None:
     print("\nPre-record checklist:")
     print(f"  - Target cube is {args.target_color} and is visible from camera {args.camera_index}.")
@@ -233,8 +262,8 @@ def wait_for_space_to_record() -> bool:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--leader-port", required=True)
-    parser.add_argument("--follower-port", required=True)
+    parser.add_argument("--leader-port", default=DEFAULT_LEADER_PORT)
+    parser.add_argument("--follower-port", default=DEFAULT_FOLLOWER_PORT)
     parser.add_argument("--leader-id", default=DEFAULT_LEADER_ID)
     parser.add_argument("--follower-id", default=DEFAULT_FOLLOWER_ID)
     parser.add_argument("--dataset-name", default=DEFAULT_DATASET_NAME)
@@ -249,16 +278,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fps", type=int, default=15)
     parser.add_argument("--teleop-time-s", type=float, default=10)
     parser.add_argument("--max-relative-target", type=float, default=15)
-    parser.add_argument("--camera-index", default="0")
-    parser.add_argument("--camera-width", type=int, default=640)
-    parser.add_argument("--camera-height", type=int, default=480)
-    parser.add_argument("--camera-fps", type=int, default=30)
+    parser.add_argument("--camera-index", default=DEFAULT_CAMERA_INDEX)
+    parser.add_argument("--camera-width", type=int, default=DEFAULT_CAMERA_WIDTH)
+    parser.add_argument("--camera-height", type=int, default=DEFAULT_CAMERA_HEIGHT)
+    parser.add_argument("--camera-fps", type=int, default=DEFAULT_CAMERA_FPS)
     parser.add_argument(
         "--vcodec",
-        default="h264",
+        default=DEFAULT_VCODEC,
         help="LeRobot video codec. h264 is easier to inspect locally than the default libsvtav1.",
     )
-    parser.add_argument("--display-data", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--display-data", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument(
         "--run-record",
         action="store_true",
@@ -313,6 +342,9 @@ def main() -> int:
     if not args.run_record:
         print("\nDry run only. Add --run-record to execute lerobot-record.")
         return 0
+
+    if not check_record_output_path(args):
+        return 1
 
     print_recording_reminders(args)
     if args.ready_prompt and not wait_for_space_to_record():
