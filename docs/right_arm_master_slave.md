@@ -45,7 +45,7 @@ camera profile  -> 1280x720@30, h264
 |------|----------|-------------------|
 | right follower | `/dev/xlerobot_right_follower` | `5B14028939` |
 | left leader | `/dev/xlerobot_left_leader` | `5B14112340` |
-| RealSense head RGB | `/dev/xlerobot_head_camera` | `123423024637`, USB interface `03`, V4L capture |
+| RealSense D435i head RGB | `/dev/xlerobot_head_camera` | vendor `8086`, model `0b3a`, serial `011323050644`, USB interface `03`, V4L capture |
 
 串口规则:
 
@@ -60,7 +60,7 @@ EOF
 
 ```bash
 sudo tee /etc/udev/rules.d/99-xlerobot-camera.rules >/dev/null <<'EOF'
-KERNEL=="video*", SUBSYSTEM=="video4linux", ENV{ID_VENDOR_ID}=="8086", ENV{ID_MODEL_ID}=="0ad3", ENV{ID_SERIAL_SHORT}=="123423024637", ENV{ID_USB_INTERFACE_NUM}=="03", ENV{ID_V4L_CAPABILITIES}==":capture:", SYMLINK+="xlerobot_head_camera", MODE="0660", GROUP="video", TAG+="uaccess"
+KERNEL=="video*", SUBSYSTEM=="video4linux", ENV{ID_VENDOR_ID}=="8086", ENV{ID_MODEL_ID}=="0b3a", ENV{ID_SERIAL_SHORT}=="011323050644", ENV{ID_USB_INTERFACE_NUM}=="03", ENV{ID_V4L_CAPABILITIES}==":capture:", SYMLINK+="xlerobot_head_camera", MODE="0660", GROUP="video", TAG+="uaccess"
 EOF
 ```
 

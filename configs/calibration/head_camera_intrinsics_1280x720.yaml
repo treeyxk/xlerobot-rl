@@ -1,5 +1,9 @@
 # Head camera intrinsics exported from MATLAB Camera Calibrator.
-# Source: /media/terry/新加卷/Terry/Learning/cameraParams_struct.mat
+# Camera: Intel RealSense D435i RGB stream.
+# Source:
+#   /media/terry/新加卷/Terry/Learning/robtics/XLerobot/D435i_0519_opencv.yaml
+# Cross-check:
+#   /media/terry/新加卷/Terry/Learning/robtics/XLerobot/calibrationSession_values.xlsx
 
 camera_name: head_camera
 model: pinhole_radial_tangential
@@ -11,33 +15,33 @@ intrinsic_matrix:
   rows: 3
   cols: 3
   data:
-    - [1435.4635473878552, 0.0, 634.0972231491008]
-    - [0.0, 1425.1383220972552, 323.9513272756298]
+    - [914.730382291919, 0.0, 640.9766237993031]
+    - [0.0, 915.6818319525141, 361.5668024069609]
     - [0.0, 0.0, 1.0]
 
-focal_length_px: [1435.4635473878552, 1425.1383220972552]
-principal_point_px: [634.0972231491008, 323.9513272756298]
+focal_length_px: [914.730382291919, 915.6818319525141]
+principal_point_px: [640.9766237993031, 361.5668024069609]
 
 # OpenCV order: [k1, k2, p1, p2, k3].
 distortion_model: opencv_5
-distortion_coefficients: [0.11181378004334334, -0.11107335501214415, 0.0, 0.0, 0.0]
-radial_distortion: [0.11181378004334334, -0.11107335501214415]
+distortion_coefficients: [0.13282043643575828, -0.2902318479674507, 0.0, 0.0, 0.0]
+radial_distortion: [0.13282043643575828, -0.2902318479674507]
 tangential_distortion: [0.0, 0.0]
 
 calibration:
   source_tool: matlab_camera_calibrator
-  source_file: /media/terry/新加卷/Terry/Learning/cameraParams_struct.mat
+  source_file: /media/terry/新加卷/Terry/Learning/robtics/XLerobot/D435i_0519_opencv.yaml
   source_world_units: millimeters
-  num_images: 15
-  num_keypoints_per_image: 48
-  mean_reprojection_error_px: 0.2476114605639183
-  median_reprojection_error_px: 0.2072222925920249
-  p95_reprojection_error_px: 0.5992276643597501
-  max_reprojection_error_px: 1.2208040158861602
+  num_images: 26
+  num_keypoints_per_image: 361
+  mean_reprojection_error_px: 0.2063788317873495
+  median_reprojection_error_abs_px: 0.10562111144236042
+  p95_reprojection_error_abs_px: 0.3413898407257534
+  max_reprojection_error_abs_px: 1.5140119138986847
   estimate_skew: false
   estimate_tangential_distortion: false
 
 notes:
-  - Valid only for 1280x720 capture from the verified head camera stream.
+  - Valid only for 1280x720 capture from the verified D435i RGB head camera stream.
   - Do not reuse for 640x480 because the aspect ratio/FOV differs.
   - This is intrinsics only; camera-to-base extrinsics are not calibrated yet.

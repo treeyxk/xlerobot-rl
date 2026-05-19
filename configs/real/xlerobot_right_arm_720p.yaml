@@ -38,5 +38,8 @@ recording:
 udev:
   right_follower_serial: "5B14028939"
   left_leader_serial: "5B14112340"
-  head_camera_serial: "123423024637"
+  head_camera_model: "Intel RealSense D435i"
+  head_camera_vendor_id: "8086"
+  head_camera_model_id: "0b3a"
+  head_camera_serial: "011323050644"
   head_camera_usb_interface_num: "03"
