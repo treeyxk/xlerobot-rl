@@ -48,7 +48,123 @@
 
 **目的**: 算出 `T_base_head_cam` (head camera 相对于 base 的位姿), 让 sim 和真机几何一致。
 
-**步骤**:
+当前采用 AprilTag hand-eye 路线: AprilTag 固定在右腕/末端刚体上, D435i 固定在头部。
+采集多组不同右臂姿态, 每组同步保存 head camera 图像、AprilTag 检测位姿和
+right follower 关节位置。后续离线求解 `T_base_head_cam` 和 `T_ee_tag`。
+
+**可见性检查**:
+
+```bash
+python scripts/calibration/check_apriltag_visibility.py \
+  --camera-index /dev/xlerobot_head_camera \
+  --width 1280 \
+  --height 720 \
+  --fps 30 \
+  --tag-family tag36h11 \
+  --target-id 10 \
+  --output-dir data/real/calibration/apriltag_visibility_handeye \
+  --prefix handeye_visible
+```
+
+**正式采集**:
+
+```bash
+python scripts/calibration/collect_handeye_apriltag.py \
+  --follower-port /dev/xlerobot_right_follower \
+  --camera-index /dev/xlerobot_head_camera \
+  --camera-width 1280 \
+  --camera-height 720 \
+  --camera-fps 30 \
+  --tag-family tag36h11 \
+  --tag-id 10 \
+  --tag-size-m 0.05 \
+  --output-dir data/real/calibration/handeye_apriltag
+```
+
+把 `--tag-size-m` 改成实际 AprilTag 黑色外框边长, 单位米。每个姿态停止移动后按
+`SPACE` 保存一组样本。建议采 15-20 组, 避免 tag 贴边、被线缆遮挡或手扶机械臂时保存。
+
+采集脚本会连接右臂 follower 并进入 position 模式。预览窗口里可用键盘小步移动右臂:
+
+| 按键 | 关节 | 方向 |
+|------|------|------|
+| `1` / `!` | `shoulder_pan` | `+` / `-` |
+| `2` / `@` | `shoulder_lift` | `+` / `-` |
+| `3` / `#` | `elbow_flex` | `+` / `-` |
+| `4` / `$` | `wrist_flex` | `+` / `-` |
+| `5` / `%` | `wrist_roll` | `+` / `-` |
+| `6` / `^` | `gripper` | `+` / `-` |
+
+默认每次 jog 为 `2 deg`, gripper 为 `5` 个 LeRobot 校准位置单位。可通过
+`--jog-step` 和 `--gripper-jog-step` 调整。
+
+如果移动太慢或单步力矩不足, 可用更快的 jog 参数:
+
+```bash
+python scripts/calibration/collect_handeye_apriltag.py \
+  --follower-port /dev/xlerobot_right_follower \
+  --camera-index /dev/xlerobot_head_camera \
+  --camera-width 1280 \
+  --camera-height 720 \
+  --camera-fps 30 \
+  --tag-family tag36h11 \
+  --tag-id 10 \
+  --tag-size-m 0.05 \
+  --fast-jog \
+  --p-coefficient 24 \
+  --output-dir data/real/calibration/handeye_apriltag
+```
+
+`--fast-jog` 会使用 `5 deg` jog step、`30` max-relative-target 和 `0.05s`
+回读等待。`--p-coefficient` 会覆盖 LeRobot 默认的 P=16；如果出现明显抖动或撞限位,
+立即退出并降低该值。
+
+**离线求解**:
+
+```bash
+python scripts/calibration/solve_handeye_apriltag.py \
+  --dataset-dir data/real/calibration/handeye_apriltag_merged
+```
+
+求解脚本使用右臂 TCP 作为 EE frame:
+
+```text
+right_tcp = Fixed_Jaw_2 + [0, -0.107, 0] m
+```
+
+并同时估计 `T_base_head_camera` 和 `T_tcp_tag`。当前 v0 输出:
+
+```text
+data/real/calibration/handeye_apriltag_merged/solve_result.yaml
+configs/calibration/head_camera_extrinsics.yaml
+```
+
+LeRobot 到 URDF 的右臂关节方向映射:
+
+```text
+shoulder_pan:   +Rotation_R
+shoulder_lift:  -Pitch_R
+elbow_flex:     +Elbow_R
+wrist_flex:     +Wrist_Pitch_R
+wrist_roll:     -Wrist_Roll_R
+```
+
+**RGB-D 红块验证**:
+
+```bash
+python scripts/calibration/verify_head_camera_extrinsics_rgbd.py \
+  --cube-size-m 0.03
+```
+
+脚本使用 D435i aligned RGB-D、HSV 红色 mask、`head_camera_intrinsics_1280x720.yaml`
+和 `head_camera_extrinsics.yaml` 输出红块中心在 base frame 下的位置。若已经用尺子量出
+红块中心坐标, 可加:
+
+```bash
+--expected-base X Y Z
+```
+
+**固定 tag 法备选步骤**:
 
 1. 在机器人 base frame 已知位置贴标定棋盘格 (比如 base origin 正前方 0.5m, 高度已知)
 2. 用 head camera 拍棋盘格
@@ -66,6 +182,8 @@
 **输出**:
 
 - `data/real/calibration/head_cam_intrinsics.yaml`
+- `data/real/calibration/handeye_apriltag/session.yaml`
+- `data/real/calibration/handeye_apriltag/samples.jsonl`
 - `data/real/calibration/head_cam_extrinsics.yaml`
 - (这两份文件未来在 sim 中用,让 sim camera 匹配真机)
 
@@ -238,4 +356,3 @@
 5. §6 Control freq 上限
 6. §5 线缆干涉 (机械问题, 不影响算法)
 7. §7 Sim vs real 视觉 gap (定性,有时间再做)
-

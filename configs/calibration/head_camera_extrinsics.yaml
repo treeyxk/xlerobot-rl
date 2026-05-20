@@ -1,0 +1,75 @@
+# Head camera extrinsics solved from AprilTag hand-eye calibration.
+# Source dataset: data/real/calibration/handeye_apriltag_merged
+# Solver output: data/real/calibration/handeye_apriltag_merged/solve_result.yaml
+
+camera_name: head_camera
+camera_model: Intel RealSense D435i
+reference_frame: base
+camera_frame: head_camera
+method: apriltag_handeye
+
+ee_frame:
+  name: right_tcp
+  base_link_for_offset: Fixed_Jaw_2
+  tcp_offset_in_fixed_jaw_m: [0.0, -0.107, 0.0]
+
+joint_mapping:
+  shoulder_pan: Rotation_R
+  shoulder_lift: Pitch_R
+  elbow_flex: Elbow_R
+  wrist_flex: Wrist_Pitch_R
+  wrist_roll: Wrist_Roll_R
+  gripper: Jaw_R
+
+joint_signs:
+  shoulder_pan: 1.0
+  shoulder_lift: -1.0
+  elbow_flex: 1.0
+  wrist_flex: 1.0
+  wrist_roll: -1.0
+  gripper: 1.0
+
+T_base_camera:
+  rows: 4
+  cols: 4
+  data:
+    - [0.37776549033310486, 0.6359200068040751, -0.672977695960047, -0.1354654492901274]
+    - [0.9259002623398089, -0.26054649164927407, 0.2735401796598217, -0.0718274419493786]
+    - [-0.0013923047301404035, -0.7264442653332459, -0.6872239742994847, 1.1715108741968205]
+    - [0.0, 0.0, 0.0, 1.0]
+
+T_camera_base:
+  rows: 4
+  cols: 4
+  data:
+    - [0.37776549033310486, 0.9259002623398089, -0.0013923047301404035, 0.11931031934996153]
+    - [0.6359200068040751, -0.26054649164927407, -0.7264442653332459, 0.9184681577660604]
+    - [-0.672977695960047, 0.2735401796598217, -0.6872239742994847, 0.7335728243304785]
+    - [0.0, 0.0, 0.0, 1.0]
+
+T_tcp_tag:
+  rows: 4
+  cols: 4
+  data:
+    - [0.9986042151912323, 0.004343721468627323, 0.052637947206420635, 0.0008176234100639667]
+    - [-0.05024271397026352, 0.38546088705067083, 0.9213552920817313, 0.05689055417927223]
+    - [-0.016287759060264462, -0.9227139516870398, 0.3851411069554661, 0.11218207855577916]
+    - [0.0, 0.0, 0.0, 1.0]
+
+calibration:
+  samples: 24
+  tag_family: tag36h11
+  tag_id: 10
+  tag_size_m: 0.03
+  translation_mean_m: 0.01706285800676013
+  translation_median_m: 0.016680281602257117
+  translation_p95_m: 0.029436590474663262
+  translation_max_m: 0.03596753380827777
+  rotation_mean_deg: 2.621752218111848
+  rotation_median_deg: 2.677142807147872
+  rotation_p95_deg: 4.820481585773544
+  rotation_max_deg: 4.937791771528422
+
+notes:
+  - This is a v0 hand-eye calibration result; validate with a held-out AprilTag pose before closed-loop use.
+  - T_tcp_tag was estimated jointly and should not be replaced by manual measurement unless re-solving.
