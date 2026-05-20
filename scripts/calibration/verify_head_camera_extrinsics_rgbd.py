@@ -15,11 +15,17 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import yaml
 
-
-DEFAULT_INTRINSICS = Path("configs/calibration/head_camera_intrinsics_1280x720.yaml")
-DEFAULT_EXTRINSICS = Path("configs/calibration/head_camera_extrinsics.yaml")
+from xlerobot_rl.real.camera_geometry import (
+    DEFAULT_EXTRINSICS,
+    DEFAULT_INTRINSICS,
+    depth_median_for_mask,
+    load_camera_extrinsics,
+    load_camera_intrinsics,
+    pixel_depth_to_camera,
+    transform_point as transform_camera_point,
+)
+from xlerobot_rl.real.red_cube_detector import detect_red_cube_bgr
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,74 +71,30 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def load_intrinsics(path: Path) -> tuple[np.ndarray, np.ndarray]:
-    with path.open() as f:
-        cfg = yaml.safe_load(f)
-    K = np.asarray(cfg["intrinsic_matrix"]["data"], dtype=np.float64)
-    dist = np.asarray(cfg["distortion_coefficients"], dtype=np.float64).reshape(-1, 1)
-    return K, dist
+    intrinsics = load_camera_intrinsics(path)
+    return intrinsics.K, intrinsics.dist
 
 
 def load_extrinsics(path: Path) -> np.ndarray:
-    with path.open() as f:
-        cfg = yaml.safe_load(f)
-    return np.asarray(cfg["T_base_camera"]["data"], dtype=np.float64)
+    return load_camera_extrinsics(path)
 
 
 def detect_red_cube(frame_bgr: np.ndarray, min_area: int) -> tuple[np.ndarray, dict]:
-    hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
-    lower1 = np.array([0, 70, 50], dtype=np.uint8)
-    upper1 = np.array([12, 255, 255], dtype=np.uint8)
-    lower2 = np.array([170, 70, 50], dtype=np.uint8)
-    upper2 = np.array([179, 255, 255], dtype=np.uint8)
-    mask = cv2.inRange(hsv, lower1, upper1) | cv2.inRange(hsv, lower2, upper2)
-
-    kernel = np.ones((5, 5), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    candidates = []
-    h, w = mask.shape
-    for label in range(1, num_labels):
-        area = int(stats[label, cv2.CC_STAT_AREA])
-        if area < min_area:
-            continue
-        x = int(stats[label, cv2.CC_STAT_LEFT])
-        y = int(stats[label, cv2.CC_STAT_TOP])
-        bw = int(stats[label, cv2.CC_STAT_WIDTH])
-        bh = int(stats[label, cv2.CC_STAT_HEIGHT])
-        if bw <= 0 or bh <= 0:
-            continue
-        if x <= 1 or y <= 1 or x + bw >= w - 1 or y + bh >= h - 1:
-            # Avoid selecting red objects cut by the image border.
-            continue
-        candidates.append((area, label, x, y, bw, bh))
-
-    if not candidates:
-        return mask, {}
-
-    area, label, x, y, bw, bh = max(candidates, key=lambda item: item[0])
-    cx, cy = centroids[label]
-    component_mask = (labels == label).astype(np.uint8) * 255
+    detection = detect_red_cube_bgr(frame_bgr, min_area=min_area)
+    if detection is None:
+        return np.zeros(frame_bgr.shape[:2], dtype=np.uint8), {}
+    component_mask = detection.mask.astype(np.uint8) * 255
     info = {
-        "label": int(label),
-        "area_px": int(area),
-        "bbox": [int(x), int(y), int(x + bw), int(y + bh)],
-        "centroid_px": [float(cx), float(cy)],
+        "area_px": int(detection.area_px),
+        "bbox": list(detection.bbox),
+        "centroid_px": list(detection.centroid_px),
         "mask": component_mask,
     }
     return component_mask, info
 
 
 def median_depth_for_mask(depth_m: np.ndarray, mask: np.ndarray) -> float | None:
-    values = depth_m[(mask > 0) & np.isfinite(depth_m) & (depth_m > 0)]
-    if values.size == 0:
-        return None
-    lo, hi = np.percentile(values, [10, 90])
-    trimmed = values[(values >= lo) & (values <= hi)]
-    if trimmed.size == 0:
-        trimmed = values
-    return float(np.median(trimmed))
+    return depth_median_for_mask(depth_m, mask)
 
 
 def pixel_to_camera_point(
@@ -141,13 +103,11 @@ def pixel_to_camera_point(
     K: np.ndarray,
     dist: np.ndarray,
 ) -> np.ndarray:
-    pts = np.asarray([[[pixel_xy[0], pixel_xy[1]]]], dtype=np.float64)
-    normalized = cv2.undistortPoints(pts, K, dist).reshape(2)
-    return np.array([normalized[0] * depth_z_m, normalized[1] * depth_z_m, depth_z_m], dtype=np.float64)
+    return pixel_depth_to_camera(pixel_xy, depth_z_m, K, dist)
 
 
 def transform_point(T: np.ndarray, p: np.ndarray) -> np.ndarray:
-    return (T @ np.r_[p, 1.0])[:3]
+    return transform_camera_point(T, p)
 
 
 def draw_debug(

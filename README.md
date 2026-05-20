@@ -167,3 +167,15 @@ python scripts/sanity/check_lerobot_dataset.py \
   --expect-width 1280 \
   --expect-height 720
 ```
+
+## 真机红块 grounding sanity
+
+头部 D435i 内参和 hand-eye 外参固定后,可用真实 RGB-D 直接输出红块在 base frame 下的位置:
+
+```bash
+python scripts/sanity/detect_real_red_cube.py --cube-size-m 0.03
+```
+
+结果会保存到 `data/real/sanity/red_cube_detector/`,并输出 `GroundedObject` 风格的
+`pos_camera_m` / `pos_base_m`。同一套几何逻辑在 `xlerobot_rl.real.camera_geometry` 和
+`xlerobot_rl.real.red_cube_detector` 中复用。

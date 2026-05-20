@@ -164,6 +164,17 @@ python scripts/calibration/verify_head_camera_extrinsics_rgbd.py \
 --expected-base X Y Z
 ```
 
+正式模块入口:
+
+```bash
+python scripts/sanity/detect_real_red_cube.py \
+  --cube-size-m 0.03
+```
+
+该脚本使用 `xlerobot_rl.real.camera_geometry.RealCameraGeometry` 和
+`xlerobot_rl.real.red_cube_detector.detect_red_cube_rgbd`,输出 `GroundedObject` 风格结果。
+输出目录默认为 `data/real/sanity/red_cube_detector/`。
+
 **固定 tag 法备选步骤**:
 
 1. 在机器人 base frame 已知位置贴标定棋盘格 (比如 base origin 正前方 0.5m, 高度已知)
