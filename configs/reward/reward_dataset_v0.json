@@ -1,0 +1,40 @@
+{
+  "name": "reward_red_cube_v0",
+  "description": "Minimal binary success/failure dataset for red-cube reward classifier.",
+  "image_key": "observation.images.front",
+  "success_label": 1,
+  "failure_label": 0,
+  "datasets": [
+    {
+      "category": "success",
+      "label": 1,
+      "expected_episodes": 25,
+      "root": "data/real/lerobot/reward_dataset/clean/success_25ep_20260521",
+      "notes": "Merged from the initial 10 successful BC test episodes plus 15 success patch episodes."
+    },
+    {
+      "category": "fail_miss_target",
+      "label": 0,
+      "expected_episodes": 10,
+      "root": "data/real/lerobot/reward_dataset/clean/fail_miss_target_10ep_20260521"
+    },
+    {
+      "category": "fail_wrong_object",
+      "label": 0,
+      "expected_episodes": 10,
+      "root": "data/real/lerobot/reward_dataset/clean/fail_wrong_object_10ep_20260521"
+    },
+    {
+      "category": "fail_knock_push",
+      "label": 0,
+      "expected_episodes": 10,
+      "root": "data/real/lerobot/reward_dataset/clean/fail_knock_push_10ep_20260521"
+    },
+    {
+      "category": "fail_grasp_drop",
+      "label": 0,
+      "expected_episodes": 10,
+      "root": "data/real/lerobot/reward_dataset/clean/fail_grasp_drop_10ep_20260521"
+    }
+  ]
+}
