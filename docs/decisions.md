@@ -103,6 +103,8 @@ M4 真实红块任务需要一个最小 reward/success classifier,用于区分:
 - 末尾前约 1.5s offset 版本: failure 8/8 正确,success 1/3 正确。
 - 末尾前约 2.0s offset 版本: failure 8/8 正确,success 1/3 正确。
 - 末尾前约 3.3s offset 版本: success 3/3 正确,但 failure 仅 3/8 正确。
+- 后段约 4s 序列版本: failure 8/8 正确,success 0/3 正确。
+- 整条 episode 32 帧序列版本: failure 8/8 正确,success 0/3 正确。
 
 根因是 final/current observation 不一定直接可见红块是否仍在夹爪中:红块可能被夹爪或机械臂遮挡,
 也可能短暂离开画面。单帧/单窗口 reward 对这种视觉遮挡过于脆弱。
@@ -113,6 +115,10 @@ M4 真实红块任务需要一个最小 reward/success classifier,用于区分:
 offset 扫描进一步确认:窗口越往前,success 越容易识别,但 `fail_grasp_drop` 和
 `fail_knock_push` 也越容易被误判为 success。单窗口模型无法同时表达
 "曾经接触/夹到" 和 "最终持续成功" 这两个不同概念。
+
+整条 episode 序列版本仍未解决 holdout success 泛化,说明问题不只是采样窗口位置:
+当前训练/holdout success 分布仍不一致,或当前轻量视觉+state 模型不足以稳定表达真实成功。
+该结果记录为负结果,暂不继续扩大模型改动。
 
 ### Decision
 

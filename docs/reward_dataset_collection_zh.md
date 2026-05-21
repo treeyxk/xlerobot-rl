@@ -92,6 +92,7 @@ binary classifier。该方法在训练集内部验证能很快到 100%,但 holdo
 | `red_cube_v0_success25_offset60` | success 25 + failure 40,末尾前约 2.0s 窗口 | failure 8/8 正确,success 1/3 正确 |
 | `red_cube_v0_success25_offset100` | success 25 + failure 40,末尾前约 3.3s 窗口 | success 3/3 正确,但 failure 仅 3/8 正确 |
 | `red_cube_v0_seq16_span120` | success 25 + failure 40,后段约 4s 有序序列 | failure 8/8 正确,success 0/3 正确 |
+| `red_cube_v0_seq32_full` | success 25 + failure 40,整条 episode 均匀 32 帧 | failure 8/8 正确,success 0/3 正确 |
 
 原因: 成功 episode 的最终几帧里,红块可能被夹爪、机械臂或视角遮挡,单帧不一定能直接看清
 "红块是否仍被稳定抓住"。这不是单纯多采几条数据能完全解决的问题。
@@ -115,6 +116,11 @@ offset 扫描结论:
 当前 reward classifier v0 改为 ordered sequence 方案。后段窗口实验仍然漏掉 holdout success,
 因此优先使用 `--sequence-scope full` 从整条 episode 均匀抽帧,让模型看到接近、夹取、
 带起和结束状态的完整过程。
+
+注意: `red_cube_v0_seq32_full` 首次 holdout 结果仍为 failure 8/8、success 0/3。
+这说明仅把抽帧范围扩展到整条 episode 还不够;当前训练/holdout success 分布仍不一致,
+或当前视觉+state 模型容量/标签定义不足以稳定识别 holdout success。该结果先记录为负结果,
+暂不继续修改模型。
 
 - 脚本: `scripts/train/train_reward_sequence_classifier.py`
 - 评估: `scripts/eval/eval_reward_sequence_classifier.py`
