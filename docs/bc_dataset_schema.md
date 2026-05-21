@@ -85,6 +85,32 @@ git_commit: "<commit>"
 notes: ""
 ```
 
+Real smoke/BC recordings may also include a pre-record target snapshot. This is
+dataset-level metadata, not a replacement for per-step grounding, but it lets
+the first real demos carry a target-conditioned pose immediately:
+
+```yaml
+target_grounding:
+  enabled: true
+  detector: "hsv_rgbd_red_cube_v0"
+  intrinsics: "configs/calibration/head_camera_intrinsics_1280x720.yaml"
+  extrinsics: "configs/calibration/head_camera_extrinsics.yaml"
+  cube_size_m: 0.03
+  min_area_px: 300
+target_snapshot:
+  status: "captured"  # "captured" | "failed" | "not_captured"
+  source: "real_rgbd_hsv"
+  target_pos_base_initial_m: [-0.381470, 0.001665, 0.772978]
+  target_visible_initial: true
+  debug_image: "data/bc/<dataset_name>/target_snapshots/pre_record_target_debug.png"
+  result_json: "data/bc/<dataset_name>/target_snapshots/pre_record_target_result.json"
+```
+
+Formal converted BC episodes should still expose `obs/target_pos_base` and
+`obs/target_visible` per step. For the first real smoke data, converters may use
+`target_snapshot.target_pos_base_initial_m` as a constant episode target when
+the object is not moved during the demo.
+
 ## Episode Metadata
 
 Each `episode_XXXXXX.h5` must include a `meta` group or equivalent attributes:
@@ -258,6 +284,47 @@ confirmation:
 
 - Press `Space` to start recording.
 - Press `q` to cancel before `lerobot-record` starts.
+
+After `Space`, the script captures one RGB-D target snapshot before launching
+`lerobot-record`. Use `--require-target-snapshot` to abort recording if this
+snapshot fails.
+
+For repeated collection, use `--continuous-record`. It records one LeRobot
+dataset per accepted demo:
+
+```bash
+python scripts/deploy/record_bc_demo.py \
+  --target-color red \
+  --episode-time-s 60 \
+  --run-record \
+  --continuous-record \
+  --require-target-snapshot \
+  --auto-return-ready
+```
+
+Controls:
+
+- `Space`: start one demo.
+- `Space`: end the current demo. The wrapper sends LeRobot's Right Arrow finish
+  signal; press Right Arrow manually if the synthetic key is blocked.
+- `y`: keep the just-recorded demo.
+- `n`: discard it.
+- `q`: quit.
+
+If `--dataset-name` is omitted, the wrapper generates
+`m4_target_grasp_v0_bc_session_<timestamp>`.
+
+With `--auto-return-ready`, the wrapper first starts in-process leader-follower
+teleop for ready-pose setup. The operator moves the left leader arm, the right
+follower tracks it, and pressing `Space` locks both arms before reading both
+ready poses. Before every demo, the wrapper returns both arms to those poses
+with low-speed joint interpolation and keeps them locked. Pressing `Space`
+releases the serial ports and starts recording.
+
+Each kept trial is stored under names like
+`data/real/lerobot/m4_target_grasp_v0_bc_session_001_ep000/`, with matching
+`data/bc/..._ep000/dataset_info.yaml`. The session root stores
+`continuous_session.json` listing kept/discarded trial dataset names.
 - Add `--no-ready-prompt` for non-interactive automation.
 
 The verified real-hardware device names are recorded in

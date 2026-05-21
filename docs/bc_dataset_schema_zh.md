@@ -82,6 +82,30 @@ git_commit: "<commit>"
 notes: ""
 ```
 
+真实 smoke/BC 录制可以额外包含录制前 target snapshot。这是 dataset 级元数据,不能替代
+正式 per-step grounding,但可以让第一批真实 demo 立刻带上 target-conditioned pose:
+
+```yaml
+target_grounding:
+  enabled: true
+  detector: "hsv_rgbd_red_cube_v0"
+  intrinsics: "configs/calibration/head_camera_intrinsics_1280x720.yaml"
+  extrinsics: "configs/calibration/head_camera_extrinsics.yaml"
+  cube_size_m: 0.03
+  min_area_px: 300
+target_snapshot:
+  status: "captured"  # "captured" | "failed" | "not_captured"
+  source: "real_rgbd_hsv"
+  target_pos_base_initial_m: [-0.381470, 0.001665, 0.772978]
+  target_visible_initial: true
+  debug_image: "data/bc/<dataset_name>/target_snapshots/pre_record_target_debug.png"
+  result_json: "data/bc/<dataset_name>/target_snapshots/pre_record_target_result.json"
+```
+
+正式转换后的 BC episode 仍应暴露 per-step 的 `obs/target_pos_base` 和
+`obs/target_visible`。第一批真实 smoke 数据如果录制过程中物体不移动,converter 可以临时把
+`target_snapshot.target_pos_base_initial_m` 作为整条 episode 的常量 target。
+
 ## Episode 元数据
 
 每个 `episode_XXXXXX.h5` 必须包含 `meta` group 或等价 attributes:
@@ -248,6 +272,42 @@ python scripts/deploy/record_bc_demo.py \
 - 按 `Space` 开始录制。
 - 按 `q` 取消,不会启动 `lerobot-record`。
 - 自动化脚本可加 `--no-ready-prompt` 跳过该确认。
+
+按 `Space` 后,脚本会先抓取一帧 RGB-D target snapshot,然后再启动 `lerobot-record`。
+如果希望 snapshot 失败时直接取消录制,添加 `--require-target-snapshot`。
+
+连续采集多条 demo 时,使用 `--continuous-record`。该模式会把每条保留下来的 demo 存成一个
+独立 LeRobot dataset:
+
+```bash
+python scripts/deploy/record_bc_demo.py \
+  --target-color red \
+  --episode-time-s 60 \
+  --run-record \
+  --continuous-record \
+  --require-target-snapshot \
+  --auto-return-ready
+```
+
+控制方式:
+
+- `Space`: 开始一条 demo。
+- `Space`: 结束当前 demo。wrapper 会发送 LeRobot 的 Right Arrow 结束信号;如果合成按键被系统拦截,手动按一次右箭头。
+- `y`: 保存刚录完的一条。
+- `n`: 丢弃刚录完的一条。
+- `q`: 退出连续采集。
+
+不传 `--dataset-name` 时会自动生成 `m4_target_grasp_v0_bc_session_<timestamp>`。
+
+`--auto-return-ready` 会在脚本启动后先进入一段脚本内主从 teleop。你移动左臂,右臂跟随到目标
+安全初始姿态;确认左右臂都对齐且夹爪打开后按 `Space`。脚本会先锁住左右臂,再记录
+leader + follower 的 ready pose。之后每条 demo 开始前,脚本都会用低速关节插值把左右臂送回这组姿态并保持锁定;
+到位后再等待你按 `Space`,然后释放端口并开始录制。
+
+保存后的目录形如
+`data/real/lerobot/m4_target_grasp_v0_bc_session_001_ep000/`,对应 metadata 在
+`data/bc/..._ep000/dataset_info.yaml`。session 根目录会写
+`continuous_session.json`,记录保留和丢弃的 trial dataset 名称。
 
 当前已验证的固定设备名记录在 `configs/real/xlerobot_right_arm_720p.yaml`:
 

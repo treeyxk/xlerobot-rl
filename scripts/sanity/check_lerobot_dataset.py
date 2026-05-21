@@ -227,23 +227,40 @@ def check_columns(
     if "timestamp" in data.columns and len(data) > 1:
         timestamps = data["timestamp"].astype(float)
         print(f"  timestamp range: {timestamps.min():.3f} -> {timestamps.max():.3f}")
-        if not timestamps.is_monotonic_increasing:
-            add(results, "FAIL", "timestamps are not monotonic increasing")
-        deltas = timestamps.diff().dropna()
-        if (deltas <= 0).any():
-            add(results, "FAIL", "timestamps contain non-positive frame deltas")
-        if args.expect_fps is not None:
-            expected_dt = 1.0 / args.expect_fps
-            large_gaps = int((deltas > expected_dt * 2.0).sum())
-            if large_gaps:
-                add(results, "WARN", f"timestamps contain {large_gaps} gaps > {expected_dt * 2.0:.3f}s")
+        groups = data.groupby("episode_index", sort=True) if "episode_index" in data.columns else [(None, data)]
+        for episode_index, group in groups:
+            episode_timestamps = group["timestamp"].astype(float)
+            if not episode_timestamps.is_monotonic_increasing:
+                add(results, "FAIL", f"episode {episode_index} timestamps are not monotonic increasing")
+            deltas = episode_timestamps.diff().dropna()
+            if (deltas <= 0).any():
+                add(results, "FAIL", f"episode {episode_index} timestamps contain non-positive frame deltas")
+            if args.expect_fps is not None:
+                expected_dt = 1.0 / args.expect_fps
+                large_gaps = int((deltas > expected_dt * 2.0).sum())
+                if large_gaps:
+                    add(
+                        results,
+                        "WARN",
+                        f"episode {episode_index} timestamps contain {large_gaps} gaps > "
+                        f"{expected_dt * 2.0:.3f}s",
+                    )
 
     if "frame_index" in data.columns and len(data) > 0:
-        first = int(data["frame_index"].iloc[0])
-        last = int(data["frame_index"].iloc[-1])
-        print(f"  frame_index range: {first} -> {last}")
-        if first != 0 or last != len(data) - 1:
-            add(results, "FAIL", f"frame_index range {first}->{last} does not match row count {len(data)}")
+        groups = data.groupby("episode_index", sort=True) if "episode_index" in data.columns else [(None, data)]
+        ranges = []
+        for episode_index, group in groups:
+            first = int(group["frame_index"].iloc[0])
+            last = int(group["frame_index"].iloc[-1])
+            ranges.append(f"{episode_index}:{first}->{last}")
+            if first != 0 or last != len(group) - 1:
+                add(
+                    results,
+                    "FAIL",
+                    f"episode {episode_index} frame_index range {first}->{last} "
+                    f"does not match row count {len(group)}",
+                )
+        print(f"  frame_index ranges by episode: {', '.join(ranges)}")
 
 
 def print_results(results: list[CheckResult]) -> int:

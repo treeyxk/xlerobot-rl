@@ -153,9 +153,45 @@ python scripts/deploy/record_bc_demo.py \
 - 按 `q` 取消,不会启动 `lerobot-record`。
 - 如需自动化跳过确认,添加 `--no-ready-prompt`。
 
-脚本默认使用 `--dataset.vcodec=h264`,便于后续用 OpenCV 或常规播放器检查视频。
+按 `Space` 后,脚本会先抓取一帧 D435i RGB-D target snapshot,将红块的
+`target_pos_base_initial_m` 写入 `data/bc/<dataset_name>/dataset_info.yaml`,并保存 debug 图到
+`data/bc/<dataset_name>/target_snapshots/`。如果这一步必须成功才允许录制,添加:
+
+```bash
+--require-target-snapshot
+```
+
+连续采集多条 demo 时,使用交互模式:
+
+```bash
+python scripts/deploy/record_bc_continuous.py \
+  --target-color red \
+  --episode-time-s 20
+```
+
+交互控制:
+
+- setup 阶段: 移动左臂,右臂跟随;`Space` 锁住并记录 ready pose。
+- 每条 demo 前: 左右臂自动回 ready pose 并锁住;`Space` 开始录制。
+- 录制中: `Space` 结束当前 demo。
+- `y`: 保存刚录完的一条。
+- `n`: 丢弃刚录完的一条。
+- `q`: 退出连续采集。
+
+不传 `--dataset-name` 时会自动生成 `m4_target_grasp_v0_bc_session_<timestamp>`。这个脚本在同一个
+Python 进程里保持 leader/follower/camera/dataset 连接,避免外部 `lerobot-record` 反复启停造成的
+torque gap。
+
+保存的数据会写入同一个 LeRobot dataset root:
+
+```text
+data/real/lerobot/m4_target_grasp_v0_bc_session_<timestamp>/
+data/bc/m4_target_grasp_v0_bc_session_001/continuous_session.json
+```
+
+脚本默认使用 `h264`,便于后续用 OpenCV 或常规播放器检查视频。
 原始 LeRobot 数据写入 `data/real/lerobot/<dataset_name>/`,伴随 metadata 模板写入
-`data/bc/<dataset_name>/dataset_info.yaml`。
+`data/bc/<dataset_name>/dataset_info.json`。
 
 录制结束后运行数据完整性检查:
 
@@ -167,6 +203,85 @@ python scripts/sanity/check_lerobot_dataset.py \
   --expect-width 1280 \
   --expect-height 720
 ```
+
+合并多个本地 LeRobot dataset 时使用:
+
+```bash
+python scripts/data_collection/merge_lerobot_datasets.py \
+  --dataset-name m4_target_grasp_v0_bc_red_25ep_merged_20260520 \
+  --source-roots \
+    data/real/lerobot/m4_target_grasp_v0_bc_session_A \
+    data/real/lerobot/m4_target_grasp_v0_bc_session_B
+```
+
+合并脚本会重新解码已保存 episode 并重写视频,可以清理早期采集脚本中 discarded trial
+图片混入 mp4 的问题。合并后再次运行 `check_lerobot_dataset.py`。
+
+## BC overfit 训练
+
+BC overfit 用来验证“数据读取 -> 图像/状态输入 -> action 输出 -> loss 下降”链路是否打通。
+它不是泛化训练,而是先让一个小模型背下当前数据集。
+
+```bash
+python scripts/train/train_bc_overfit.py \
+  --dataset-root data/real/lerobot/m4_target_grasp_v0_bc_red_25ep_merged_20260520 \
+  --output-dir outputs/bc_overfit/red_25ep_v0 \
+  --epochs 30 \
+  --batch-size 32
+```
+
+输出:
+
+- `outputs/bc_overfit/red_25ep_v0/config.json`
+- `outputs/bc_overfit/red_25ep_v0/metrics.csv`
+- `outputs/bc_overfit/red_25ep_v0/checkpoint_last.pt`
+
+判断标准: `loss_norm_mse` 应明显下降,`action_mae_deg` 应随 epoch 降低。若 overfit 都降不下去,
+先检查视频/action 是否错位、任务是否混杂、或 action/state 维度是否对应。
+
+## BC policy 离线/真机测试
+
+离线测试用训练好的 checkpoint 在独立测试集上只计算误差,不控制机械臂:
+
+```bash
+python scripts/eval/eval_bc_policy.py \
+  --checkpoint outputs/bc_overfit/red_62ep_final_v0/checkpoint_last.pt \
+  --dataset-root data/real/lerobot/m4_target_grasp_v0_bc_red_test_10ep_merged_20260521 \
+  --output-dir outputs/bc_eval/red_62ep_on_test_10ep_20260521
+```
+
+真机测试先 dry-run。dry-run 会读取右臂状态和头部相机,运行 policy 并写日志,但不发动作:
+
+```bash
+python scripts/deploy/run_bc_policy.py \
+  --checkpoint outputs/bc_overfit/red_62ep_final_v0/checkpoint_last.pt \
+  --duration-s 5 \
+  --action-scale 0.3 \
+  --max-delta-deg 2.0
+```
+
+dry-run 正常后再短时低速执行:
+
+```bash
+python scripts/deploy/run_bc_policy.py \
+  --checkpoint outputs/bc_overfit/red_62ep_final_v0/checkpoint_last.pt \
+  --duration-s 5 \
+  --action-scale 0.2 \
+  --max-delta-deg 1.0 \
+  --execute
+```
+
+执行模式必须保持急停/断电可触达。先空桌测试,再放红块做短程测试。
+
+当前固定的 BC v0 baseline:
+
+```text
+outputs/bc_baselines/bc_v0_red_cube_20260521/checkpoint.pt
+```
+
+该 checkpoint 已完成 62ep 训练、10ep 独立测试和低速真机 rollout。它作为后续
+reward-guided fine-tune / RL 的初始化,不是最终抓取策略。失败数据补采计划见
+`docs/reward_dataset_collection_zh.md`。
 
 ## 真机红块 grounding sanity
 
