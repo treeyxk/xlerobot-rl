@@ -25,6 +25,20 @@ camera:
   video_codec: h264
   intrinsics: configs/calibration/head_camera_intrinsics_1280x720.yaml
 
+head_servos:
+  bus_port: /dev/xlerobot_right_follower
+  model: sts3215
+  pan_id: 7
+  tilt_id: 8
+  center_raw: 2048
+  fixed_pose:
+    source: "python scripts/deploy/head_camera_servos.py status"
+    recorded_at: "2026-05-24"
+    pan_deg_approx: 5.71
+    pan_raw: 2113
+    tilt_deg_approx: 44.66
+    tilt_raw: 2556
+
 recording:
   dataset_name: m4_target_grasp_v0_720p_smoke
   target_color: red

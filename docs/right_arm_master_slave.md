@@ -46,6 +46,7 @@ camera profile  -> 1280x720@30, h264
 | right follower | `/dev/xlerobot_right_follower` | `5B14028939` |
 | left leader | `/dev/xlerobot_left_leader` | `5B14112340` |
 | RealSense D435i head RGB | `/dev/xlerobot_head_camera` | vendor `8086`, model `0b3a`, serial `011323050644`, USB interface `03`, V4L capture |
+| head pan/tilt servos | `/dev/xlerobot_right_follower` | 和右臂共用 Feetech bus;默认 pan id=7, tilt id=8 |
 
 串口规则:
 
@@ -105,6 +106,75 @@ video: 1280x720 h264
 OpenCV decode: OK
 action/state shape: 6
 ```
+
+### 3.0.1 头部相机舵机固定角度
+
+项目提供 `scripts/deploy/head_camera_servos.py` 控制头部相机的两个 Feetech 舵机,用于读取和固定
+pan/tilt 角度。头部舵机和右臂接在同一个 Feetech bus 上,因此默认使用右臂 follower 端口。
+不要在 `record_bc_continuous.py`、`record_reward_classifier_states.py` 或 policy rollout 正在连接右臂时,
+同时运行这个脚本,否则两个进程会抢同一个串口。
+
+默认假设:
+
+```text
+port: /dev/xlerobot_right_follower
+model: sts3215
+pan id: 7
+tilt id: 8
+unit: raw tick, with approximate degrees displayed around center_raw=2048
+current fixed pose: pan=+5.71 deg raw=2113, tilt=+44.66 deg raw=2556
+```
+
+扫描右臂总线,确认除了右臂 1-6 号舵机外,还能看到头部舵机 ID:
+
+```bash
+python scripts/deploy/head_camera_servos.py scan \
+  --port /dev/xlerobot_right_follower
+```
+
+读取当前角度:
+
+```bash
+python scripts/deploy/head_camera_servos.py status
+```
+
+当前固定角度记录在 `configs/real/xlerobot_right_arm_720p.yaml` 的 `head_servos.fixed_pose`。
+
+交互微调:
+
+```bash
+python scripts/deploy/head_camera_servos.py jog --step-deg 2
+```
+
+交互按键:
+
+| 按键 | 作用 |
+| --- | --- |
+| `a` / `d` | pan - / + |
+| `w` / `s` | tilt + / - |
+| `r` | 读取当前角度 |
+| `h` | 用当前角度作为 hold target |
+| `0` | 回到 pan=0, tilt=0 |
+| `q` | 退出 |
+
+固定到指定角度:
+
+```bash
+python scripts/deploy/head_camera_servos.py set \
+  --pan 0 \
+  --tilt -20
+```
+
+默认退出后保持 torque,方便固定视角。如果只想读/测试后松开舵机,加 `--disable-torque`。
+第一次使用前先确认 pan/tilt 方向和限位,必要时用 `--pan-min/--pan-max/--tilt-min/--tilt-max`
+收窄安全范围。
+
+固定头部角度的推荐流程:
+
+1. 停止所有正在控制右臂的脚本。
+2. 运行 `head_camera_servos.py jog` 或 `set` 调到目标角度。
+3. 不加 `--disable-torque`,让头部舵机保持角度。
+4. 再启动 BC/reward 采集脚本。
 
 ### 3.1 找串口
 

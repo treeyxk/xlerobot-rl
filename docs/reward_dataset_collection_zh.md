@@ -189,6 +189,69 @@ python scripts/eval/eval_reward_sequence_classifier.py \
 - 失败原因应由动作导致,不是由目标不可见、光照极差、遮挡严重导致。
 - 对 success: 重点是后段持续稳定抓住/带起红块;最终单帧不强制要求无遮挡,但整段后段必须能提供足够时序证据。
 
+## 状态级 reward classifier 采集
+
+后续 reward classifier 改为 HIL-SERL 风格的 frame/state-level 标注:
+
+```text
+reward.success = 1  当前帧已经处于稳定任务成功状态
+reward.success = 0  当前帧不是稳定成功状态
+```
+
+注意这不是 episode-level label。成功 episode 的接近、碰到、未抓稳、刚夹住但还没带起等阶段
+仍然是 `0`。只有红块已经被稳定抓住/带起/保持时才标 `1`。
+
+项目脚本:
+
+```bash
+python scripts/deploy/record_reward_classifier_states.py \
+  --dataset-name reward_red_state_labels_v0_001 \
+  --target-color red \
+  --episode-time-s 60 \
+  --max-episodes 8
+```
+
+默认设备:
+
+```text
+leader:        /dev/xlerobot_left_leader
+follower:      /dev/xlerobot_right_follower
+head camera:   /dev/xlerobot_head_camera
+camera profile: 1280x720@30
+control fps:   15
+```
+
+脚本会打开实时相机预览窗口。录制时按键:
+
+| 按键 | 作用 |
+| --- | --- |
+| `p` | 切换 positive 标注 ON/OFF。ON 时写入 `reward.success=1`。 |
+| `0` | 立即回到 negative,写入 `reward.success=0`。 |
+| `SPACE` | 结束当前 episode。 |
+| `q` / `ESC` | 退出当前录制流程。 |
+
+采集目标:
+
+| 类型 | 目标数量 | 要求 |
+| --- | ---: | --- |
+| positive state | 300-600 帧 | 红块已经被稳定抓住/带起/保持时打开 `p`。 |
+| negative / hard negative state | 1000-2000 帧 | 默认就是 negative;重点覆盖容易误判成成功的状态。 |
+
+建议采集内容:
+
+- 正样本: 抓起红块后保持 2-4 秒,期间 `p` 打开;每条可以多次开关。
+- 负样本: 接近红块、碰到但未夹住、半夹住、推走、掉落、抓错蓝/绿、夹爪闭合但没有红块。
+- 每 2-3 个 episode 换一次红块位置,但不要放到明显不可达区域。
+- 预览窗口里如果红块/夹爪关系完全看不清,这段不要标 positive;宁可少标,不要给脏正样本。
+- 结束一条 episode 后脚本会询问是否保存。明显误标或撞到桌子的 episode 直接丢弃。
+
+输出:
+
+```text
+data/real/lerobot/<dataset_name>/      LeRobot 数据,含 reward.success 字段
+data/reward/<dataset_name>/            采集元数据和 session 摘要
+```
+
 ## 推荐采集命令
 
 每一类单独采一个 LeRobot dataset。采集完后先 sanity check 和抽帧检查,再合并成 classifier 数据集。
